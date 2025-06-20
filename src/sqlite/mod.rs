@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Cursor, Read},
+    io::{BufRead, BufReader, Cursor, Read, Seek},
     path::Path,
 };
 
@@ -9,6 +9,8 @@ use bytes::{Buf, Bytes};
 
 pub mod page;
 use page::Page;
+
+const HEADER_SIZE: usize = 100;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DatabaseHeader {
@@ -93,21 +95,39 @@ impl DatabaseParser {
         })
     }
 
-    pub fn header(&mut self) -> Option<&DatabaseHeader> {
+    pub fn header(&mut self) -> Result<&DatabaseHeader> {
         if let Some(ref header) = self.header {
-            return Some(header);
+            return Ok(header);
         }
 
-        // TODO: Parse header
-        let mut header_bytes = [0; 100];
-        self.reader.read_exact(&mut header_bytes).ok()?;
-        None
+        let mut header_bytes = [0; HEADER_SIZE];
+        self.reader.read_exact(&mut header_bytes)?;
+        let header = DatabaseHeader::new(&header_bytes);
+        self.header = Some(header);
+
+        Ok(self.header.as_ref().unwrap())
     }
 }
 
 impl Iterator for DatabaseParser {
     type Item = Page;
     fn next(&mut self) -> Option<Self::Item> {
+        let page_size = match self.header {
+            Some(header) => header.page_size,
+            None => return None,
+        };
+
+        let current_position = self.reader.stream_position().ok()?;
+        let page_buffer_len = if current_position % u64::from(page_size) != 0 {
+            page_size - 100
+        } else {
+            page_size
+        };
+
+        // TODO: Deal with EOF
+        let mut page_buffer = vec![0u8; usize::from(page_buffer_len)];
+        self.reader.read_exact(&mut page_buffer).ok()?;
+
         None
     }
 }
