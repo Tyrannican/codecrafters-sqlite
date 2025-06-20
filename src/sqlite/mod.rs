@@ -1,13 +1,16 @@
 use anyhow::{Context, Result};
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, Cursor, Read},
     path::Path,
 };
 
-use bytes::Buf;
+use bytes::{Buf, Bytes};
 
-#[derive(Debug)]
+pub mod page;
+use page::Page;
+
+#[derive(Debug, Copy, Clone)]
 pub struct DatabaseHeader {
     pub magic: [u8; 16],
     pub page_size: u16,
@@ -34,33 +37,77 @@ pub struct DatabaseHeader {
     pub sqlite_version_number: u32,
 }
 
-// TODO: Fix
-impl From<[u8; 100]> for DatabaseHeader {
-    fn from(value: [u8; 100]) -> Self {
+impl DatabaseHeader {
+    pub fn new(buf: &[u8]) -> Self {
+        let mut buf = Bytes::copy_from_slice(buf);
+        let mut magic = [0; 16];
+        let mut reserved_expansion = [0; 20];
+
         Self {
-            magic: value[..16].try_into().expect("error taking magic string"),
-            page_size: u16::from_be_bytes(value[16..18].try_into().unwrap()),
-            write_version: u8::from_be(value[18]),
-            read_version: u8::from_be(value[19]),
-            reserved_space: u8::from_be(value[20]),
-            max_payload: u8::from_be(value[21]),
-            min_payload: u8::from_be(value[22]),
-            leaf_payload: u8::from_be(value[23]),
-            file_change_counter: u32::from_be_bytes(value[24..28].try_into().unwrap()),
-            in_header_database_size: u32::from_be_bytes(value[28..32].try_into().unwrap()),
-            freelist_trunk_page_page_no: u32::from_be_bytes(value[32..36].try_into().unwrap()),
-            total_freelist_pages: u32::from_be_bytes(value[36..40].try_into().unwrap()),
-            schema_cookie: u32::from_be_bytes(value[40..44].try_into().unwrap()),
-            schema_format_number: u32::from_be_bytes(value[44..48].try_into().unwrap()),
-            default_page_cache_size: u32::from_be_bytes(value[48..52].try_into().unwrap()),
-            largest_root_b_tree_page: u32::from_be_bytes(value[52..56].try_into().unwrap()),
-            text_encoding: u32::from_be_bytes(value[56..60].try_into().unwrap()),
-            user_version: u32::from_be_bytes(value[60..64].try_into().unwrap()),
-            incremental_vacuum_mode: u32::from_be_bytes(value[64..68].try_into().unwrap()),
-            application_id: u32::from_be_bytes(value[68..72].try_into().unwrap()),
-            reserved_expansion: value[72..92].try_into().unwrap(),
-            version_valid_for_number: u32::from_be_bytes(value[92..96].try_into().unwrap()),
-            sqlite_version_number: u32::from_be_bytes(value[96..100].try_into().unwrap()),
+            magic: {
+                buf.copy_to_slice(&mut magic);
+                magic
+            },
+            page_size: buf.get_u16(),
+            write_version: buf.get_u8(),
+            read_version: buf.get_u8(),
+            reserved_space: buf.get_u8(),
+            max_payload: buf.get_u8(),
+            min_payload: buf.get_u8(),
+            leaf_payload: buf.get_u8(),
+            file_change_counter: buf.get_u32(),
+            in_header_database_size: buf.get_u32(),
+            freelist_trunk_page_page_no: buf.get_u32(),
+            total_freelist_pages: buf.get_u32(),
+            schema_cookie: buf.get_u32(),
+            schema_format_number: buf.get_u32(),
+            default_page_cache_size: buf.get_u32(),
+            largest_root_b_tree_page: buf.get_u32(),
+            text_encoding: buf.get_u32(),
+            user_version: buf.get_u32(),
+            incremental_vacuum_mode: buf.get_u32(),
+            application_id: buf.get_u32(),
+            reserved_expansion: {
+                buf.copy_to_slice(&mut reserved_expansion);
+                reserved_expansion
+            },
+            version_valid_for_number: buf.get_u32(),
+            sqlite_version_number: buf.get_u32(),
         }
+    }
+}
+
+pub struct DatabaseParser {
+    reader: BufReader<File>,
+    header: Option<DatabaseHeader>,
+}
+
+impl DatabaseParser {
+    pub fn new(path: impl AsRef<Path>) -> Result<Self> {
+        let db = File::open(path)?;
+        let reader = BufReader::new(db);
+
+        Ok(Self {
+            reader,
+            header: None,
+        })
+    }
+
+    pub fn header(&mut self) -> Option<&DatabaseHeader> {
+        if let Some(ref header) = self.header {
+            return Some(header);
+        }
+
+        // TODO: Parse header
+        let mut header_bytes = [0; 100];
+        self.reader.read_exact(&mut header_bytes).ok()?;
+        None
+    }
+}
+
+impl Iterator for DatabaseParser {
+    type Item = Page;
+    fn next(&mut self) -> Option<Self::Item> {
+        None
     }
 }
