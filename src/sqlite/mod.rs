@@ -8,7 +8,7 @@ use std::{
 use bytes::{Buf, Bytes};
 
 pub mod page;
-use page::Page;
+use page::BTreePage;
 
 const HEADER_SIZE: usize = 100;
 
@@ -110,16 +110,23 @@ impl DatabaseParser {
 }
 
 impl Iterator for DatabaseParser {
-    type Item = Page;
+    type Item = BTreePage;
     fn next(&mut self) -> Option<Self::Item> {
         let page_size = match self.header {
             Some(header) => header.page_size,
-            None => return None,
+            None => {
+                let header = match self.header() {
+                    Ok(h) => h,
+                    Err(_) => panic!("error parsing header"),
+                };
+
+                header.page_size
+            }
         };
 
         let current_position = self.reader.stream_position().ok()?;
         let page_buffer_len = if current_position % u64::from(page_size) != 0 {
-            page_size - 100
+            page_size - HEADER_SIZE as u16
         } else {
             page_size
         };
@@ -128,6 +135,6 @@ impl Iterator for DatabaseParser {
         let mut page_buffer = vec![0u8; usize::from(page_buffer_len)];
         self.reader.read_exact(&mut page_buffer).ok()?;
 
-        None
+        Some(BTreePage::new(&page_buffer))
     }
 }

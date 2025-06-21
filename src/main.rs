@@ -21,6 +21,9 @@ struct Sqlite {
 enum SqliteCommand {
     /// Display information about the database
     DbInfo,
+
+    /// Display table information
+    Tables,
 }
 
 impl FromStr for SqliteCommand {
@@ -29,6 +32,7 @@ impl FromStr for SqliteCommand {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             ".dbinfo" => Ok(SqliteCommand::DbInfo),
+            ".tables" => Ok(SqliteCommand::Tables),
             _ => Err(format!("unknown command: {}", s)),
         }
     }
@@ -37,24 +41,20 @@ impl FromStr for SqliteCommand {
 fn main() -> Result<()> {
     // Parse arguments
     let cli = Sqlite::parse();
+    let mut db = DatabaseParser::new(cli.dbname)?;
+
     match cli.command {
         SqliteCommand::DbInfo => {
-            let mut db = DatabaseParser::new(cli.dbname)?;
             let header = db.header()?;
-            // let db = File::open(cli.dbname)?;
-            // let mut reader = BufReader::new(db);
-            // let mut header_bytes = [0; 100];
-            // reader.read_exact(&mut header_bytes)?;
+            println!("database page size: {}", header.page_size);
 
-            // let header = sqlite::DatabaseHeader::from(header_bytes);
-            // let page_size = header.page_size;
-
-            // println!("database page size: {page_size}");
-
-            // let mut schema_page = [0; 4096 - 100];
-            // reader.read_exact(&mut schema_page)?;
-            // let total_tables = u16::from_be_bytes(schema_page[3..5].try_into()?);
-            // println!("number of tables: {total_tables}");
+            let mut iter = db.into_iter();
+            let page = iter.next().unwrap();
+            println!("number of tables: {}", page.header.total_cells);
+        }
+        SqliteCommand::Tables => {
+            let mut iter = db.into_iter();
+            let page = iter.next().unwrap();
         }
     }
 
