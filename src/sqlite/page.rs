@@ -1,5 +1,3 @@
-use std::cell;
-
 use bytes::{Buf, Bytes};
 
 const MAX_VARINT_SIZE: u8 = 9;
@@ -59,7 +57,6 @@ pub struct BTreePageHeader {
 #[derive(Debug, Clone)]
 pub struct BTreePage {
     pub header: BTreePageHeader,
-    pub cell_pointers: Vec<u16>,
     rest: Vec<u8>,
 }
 
@@ -96,16 +93,10 @@ impl BTreePage {
             .collect();
         dbg!(&cell_pointers);
 
-        let mut cell = &buf[usize::from(cell_pointers[0] - 100)..];
-        let Some((size, consumed)) = parse_varint(cell) else {
-            panic!("ahh");
-        };
-
-        println!("size of record: {size}, consumed {consumed} bytes");
+        // Cell pointer value is the offset (offset - 100 if its the first page)
 
         Self {
             header,
-            cell_pointers,
             rest: buf.to_vec(),
         }
     }

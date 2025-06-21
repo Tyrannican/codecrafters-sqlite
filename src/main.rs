@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
-use sqlite::DatabaseParser;
+use sqlite::SqliteReader;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
 use std::str::FromStr;
@@ -41,7 +41,7 @@ impl FromStr for SqliteCommand {
 fn main() -> Result<()> {
     // Parse arguments
     let cli = Sqlite::parse();
-    let mut db = DatabaseParser::new(cli.dbname)?;
+    let mut db = SqliteReader::new(cli.dbname)?;
 
     match cli.command {
         SqliteCommand::DbInfo => {

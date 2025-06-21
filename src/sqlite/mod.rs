@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use memmap2::Mmap;
 use std::{
     fs::File,
     io::{BufRead, BufReader, Cursor, Read, Seek},
@@ -79,12 +80,40 @@ impl DatabaseHeader {
     }
 }
 
-pub struct DatabaseParser {
+pub struct SqliteReaderMemMap {
+    reader: Mmap,
+    database_header: DatabaseHeader,
+}
+
+// TODO: This will be the way forward
+impl SqliteReaderMemMap {
+    pub fn new(path: impl AsRef<Path>) -> Result<Self> {
+        let db = File::open(path)?;
+        // Safety: As this reader will only be instantiated in read contexts
+        // we can guarantee that no one else will be modifying the underlying
+        // file
+        let reader = unsafe { Mmap::map(&db)? };
+        let database_header = DatabaseHeader::new(&reader[0..HEADER_SIZE]);
+
+        Ok(Self {
+            reader,
+            database_header,
+        })
+    }
+
+    pub fn header(&self) -> DatabaseHeader {
+        let header_bytes = &self.reader[0..HEADER_SIZE];
+        DatabaseHeader::new(&header_bytes)
+    }
+}
+
+pub struct SqliteReader {
+    // TODO: Move to MemMapped file
     reader: BufReader<File>,
     header: Option<DatabaseHeader>,
 }
 
-impl DatabaseParser {
+impl SqliteReader {
     pub fn new(path: impl AsRef<Path>) -> Result<Self> {
         let db = File::open(path)?;
         let reader = BufReader::new(db);
@@ -109,7 +138,7 @@ impl DatabaseParser {
     }
 }
 
-impl Iterator for DatabaseParser {
+impl Iterator for SqliteReader {
     type Item = BTreePage;
     fn next(&mut self) -> Option<Self::Item> {
         let page_size = match self.header {
