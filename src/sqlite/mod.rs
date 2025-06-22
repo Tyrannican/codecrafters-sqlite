@@ -1,13 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use memmap2::Mmap;
-use std::{
-    fs::File,
-    io::{BufRead, BufReader, Cursor, Read, Seek},
-    path::Path,
-};
+use std::{fs::File, path::Path};
 
 use bytes::{Buf, Bytes};
 
+mod cell;
 pub mod page;
 use page::BTreePage;
 
@@ -80,13 +77,13 @@ impl DatabaseHeader {
     }
 }
 
-pub struct SqliteReaderMemMap {
+pub struct SqliteReader {
     reader: Mmap,
-    database_header: DatabaseHeader,
+    pub database_header: DatabaseHeader,
 }
 
 // TODO: This will be the way forward
-impl SqliteReaderMemMap {
+impl SqliteReader {
     pub fn new(path: impl AsRef<Path>) -> Result<Self> {
         let db = File::open(path)?;
         // Safety: As this reader will only be instantiated in read contexts
@@ -101,69 +98,17 @@ impl SqliteReaderMemMap {
         })
     }
 
-    pub fn header(&self) -> DatabaseHeader {
-        let header_bytes = &self.reader[0..HEADER_SIZE];
-        DatabaseHeader::new(&header_bytes)
-    }
-}
-
-pub struct SqliteReader {
-    // TODO: Move to MemMapped file
-    reader: BufReader<File>,
-    header: Option<DatabaseHeader>,
-}
-
-impl SqliteReader {
-    pub fn new(path: impl AsRef<Path>) -> Result<Self> {
-        let db = File::open(path)?;
-        let reader = BufReader::new(db);
-
-        Ok(Self {
-            reader,
-            header: None,
-        })
-    }
-
-    pub fn header(&mut self) -> Result<&DatabaseHeader> {
-        if let Some(ref header) = self.header {
-            return Ok(header);
-        }
-
-        let mut header_bytes = [0; HEADER_SIZE];
-        self.reader.read_exact(&mut header_bytes)?;
-        let header = DatabaseHeader::new(&header_bytes);
-        self.header = Some(header);
-
-        Ok(self.header.as_ref().unwrap())
-    }
-}
-
-impl Iterator for SqliteReader {
-    type Item = BTreePage;
-    fn next(&mut self) -> Option<Self::Item> {
-        let page_size = match self.header {
-            Some(header) => header.page_size,
-            None => {
-                let header = match self.header() {
-                    Ok(h) => h,
-                    Err(_) => panic!("error parsing header"),
-                };
-
-                header.page_size
-            }
-        };
-
-        let current_position = self.reader.stream_position().ok()?;
-        let page_buffer_len = if current_position % u64::from(page_size) != 0 {
-            page_size - HEADER_SIZE as u16
+    pub fn page(&self, page: usize) -> BTreePage {
+        let page_size = usize::from(self.database_header.page_size);
+        let (start_offset, end_offset) = if page == 0 {
+            (HEADER_SIZE, page_size)
         } else {
-            page_size
+            (page * page_size, (page + 1) * page_size)
         };
 
-        // TODO: Deal with EOF
-        let mut page_buffer = vec![0u8; usize::from(page_buffer_len)];
-        self.reader.read_exact(&mut page_buffer).ok()?;
+        assert!(start_offset < self.reader.len());
+        assert!(end_offset < self.reader.len());
 
-        Some(BTreePage::new(&page_buffer))
+        BTreePage::new(&self.reader[start_offset..end_offset], page)
     }
 }

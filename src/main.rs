@@ -1,8 +1,6 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use sqlite::SqliteReader;
-use std::fs::File;
-use std::io::{prelude::*, BufReader};
 use std::str::FromStr;
 
 mod sqlite;
@@ -39,22 +37,18 @@ impl FromStr for SqliteCommand {
 }
 
 fn main() -> Result<()> {
-    // Parse arguments
     let cli = Sqlite::parse();
-    let mut db = SqliteReader::new(cli.dbname)?;
+    let db = SqliteReader::new(cli.dbname)?;
 
     match cli.command {
         SqliteCommand::DbInfo => {
-            let header = db.header()?;
-            println!("database page size: {}", header.page_size);
+            println!("database page size: {}", db.database_header.page_size);
 
-            let mut iter = db.into_iter();
-            let page = iter.next().unwrap();
+            let page = db.page(0);
             println!("number of tables: {}", page.header.total_cells);
         }
         SqliteCommand::Tables => {
-            let mut iter = db.into_iter();
-            let page = iter.next().unwrap();
+            //
         }
     }
 

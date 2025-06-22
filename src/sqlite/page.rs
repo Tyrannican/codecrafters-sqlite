@@ -1,5 +1,8 @@
 use bytes::{Buf, Bytes};
 
+use super::cell::DbCell;
+use super::HEADER_SIZE;
+
 const MAX_VARINT_SIZE: u8 = 9;
 
 fn parse_varint(buf: &[u8]) -> Option<(u64, u8)> {
@@ -56,12 +59,13 @@ pub struct BTreePageHeader {
 
 #[derive(Debug, Clone)]
 pub struct BTreePage {
+    page_no: usize,
     pub header: BTreePageHeader,
     rest: Vec<u8>,
 }
 
 impl BTreePage {
-    pub fn new(mut buf: &[u8]) -> Self {
+    pub fn new(mut buf: &[u8], page_no: usize) -> Self {
         let page_type = BTreePageType::from(buf.get_u8());
         let header = BTreePageHeader {
             page_type,
@@ -86,17 +90,24 @@ impl BTreePage {
         };
 
         let total_cells = usize::from(header.total_cells);
-        dbg!(total_cells);
         let cell_pointers: Vec<u16> = (0..total_cells)
             .into_iter()
-            .map(|_| buf.get_u16())
+            .map(|_| {
+                if page_no == 0 {
+                    buf.get_u16() - HEADER_SIZE as u16
+                } else {
+                    buf.get_u16()
+                }
+            })
             .collect();
+
         dbg!(&cell_pointers);
 
         // Cell pointer value is the offset (offset - 100 if its the first page)
 
         Self {
             header,
+            page_no,
             rest: buf.to_vec(),
         }
     }
