@@ -1,30 +1,7 @@
-use bytes::{Buf, Bytes};
+use bytes::Buf;
 
-use super::cell::DbCell;
+use super::cell::BTreeLeafCell;
 use super::HEADER_SIZE;
-
-const MAX_VARINT_SIZE: u8 = 9;
-
-fn parse_varint(buf: &[u8]) -> Option<(u64, u8)> {
-    // Varints are 9 bytes max
-    let mut buf = Bytes::copy_from_slice(&buf[..usize::from(MAX_VARINT_SIZE)]);
-
-    let mut varint: u64 = 0;
-    for offset in 0..9 {
-        let n = buf.get_u8();
-        if offset == 8 {
-            varint |= (n as u64) << (7 * offset);
-            return Some((varint, MAX_VARINT_SIZE));
-        } else {
-            varint |= ((n & 0x7f) as u64) << (7 * offset);
-            if n & 0x80 == 0 {
-                return Some((varint, offset + 1));
-            }
-        }
-    }
-
-    None
-}
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

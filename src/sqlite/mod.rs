@@ -9,6 +9,7 @@ pub mod page;
 use page::BTreePage;
 
 const HEADER_SIZE: usize = 100;
+const MAX_VARINT_SIZE: u8 = 9;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DatabaseHeader {
@@ -111,4 +112,25 @@ impl SqliteReader {
 
         BTreePage::new(&self.reader[start_offset..end_offset], page)
     }
+}
+
+pub fn parse_varint(buf: &[u8]) -> Option<(u64, usize)> {
+    // Varints are 9 bytes max
+    let mut buf = Bytes::copy_from_slice(&buf[..usize::from(MAX_VARINT_SIZE)]);
+
+    let mut varint: u64 = 0;
+    for offset in 0..9 {
+        let n = buf.get_u8();
+        if offset == 8 {
+            varint |= (n as u64) << (7 * offset);
+            return Some((varint, usize::from(MAX_VARINT_SIZE)));
+        } else {
+            varint |= ((n & 0x7f) as u64) << (7 * offset);
+            if n & 0x80 == 0 {
+                return Some((varint, offset + 1));
+            }
+        }
+    }
+
+    None
 }
