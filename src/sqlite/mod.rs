@@ -114,23 +114,23 @@ impl SqliteReader {
     }
 }
 
-pub fn parse_varint(buf: &[u8]) -> Option<(u64, usize)> {
-    // Varints are 9 bytes max
-    let mut buf = Bytes::copy_from_slice(&buf[..usize::from(MAX_VARINT_SIZE)]);
+pub fn parse_varint(buf: &[u8]) -> (i64, usize) {
+    let mut varint: i64 = 0;
+    let mut consumed = 0;
 
-    let mut varint: u64 = 0;
-    for offset in 0..9 {
-        let n = buf.get_u8();
-        if offset == 8 {
-            varint |= (n as u64) << (7 * offset);
-            return Some((varint, usize::from(MAX_VARINT_SIZE)));
-        } else {
-            varint |= ((n & 0x7f) as u64) << (7 * offset);
-            if n & 0x80 == 0 {
-                return Some((varint, offset + 1));
-            }
+    // Varints are 9 bytes max
+    for (i, byte) in buf.iter().enumerate().take(9) {
+        consumed += 1;
+        if i == 8 {
+            varint = (varint << 8) | *byte as i64;
+            break;
+        }
+
+        varint = (varint << 7) | (*byte & 0x7f) as i64;
+        if *byte & 0x80 == 0 {
+            break;
         }
     }
 
-    None
+    (varint, consumed)
 }

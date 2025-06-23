@@ -1,6 +1,6 @@
 use bytes::Buf;
 
-use super::cell::BTreeLeafCell;
+use super::cell::{BTreeLeafCell, DatabaseCell};
 use super::HEADER_SIZE;
 
 #[repr(u8)]
@@ -34,10 +34,11 @@ pub struct BTreePageHeader {
     pub rightmost_pointer: Option<u32>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct BTreePage {
     page_no: usize,
     pub header: BTreePageHeader,
+    pub cells: Vec<DatabaseCell>,
     rest: Vec<u8>,
 }
 
@@ -52,6 +53,8 @@ impl BTreePage {
                 let value = buf.get_u16();
                 if value == 0 {
                     u16::MAX
+                } else if page_no == 0 {
+                    value - HEADER_SIZE as u16
                 } else {
                     value
                 }
@@ -66,6 +69,8 @@ impl BTreePage {
             },
         };
 
+        dbg!(&header);
+
         let total_cells = usize::from(header.total_cells);
         let cell_pointers: Vec<u16> = (0..total_cells)
             .into_iter()
@@ -77,14 +82,32 @@ impl BTreePage {
                 }
             })
             .collect();
-
         dbg!(&cell_pointers);
+
+        let cells = vec![];
+        dbg!(
+            &buf[usize::from(header.cell_content_offset)
+                ..usize::from(header.cell_content_offset) + 10]
+        );
+        let cell = DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(
+            &buf[usize::from(header.cell_content_offset)..],
+        ));
+        // let cells = cell_pointers
+        //     .into_iter()
+        //     .map(|cell| match page_type {
+        //         BTreePageType::LeafTable => {
+        //             DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(&buf[usize::from(cell)..]))
+        //         }
+        //         _ => todo!("deal with page: {page_type:?}"),
+        //     })
+        //     .collect();
 
         // Cell pointer value is the offset (offset - 100 if its the first page)
 
         Self {
             header,
             page_no,
+            cells,
             rest: buf.to_vec(),
         }
     }
