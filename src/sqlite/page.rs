@@ -44,6 +44,7 @@ pub struct BTreePage {
 
 impl BTreePage {
     pub fn new(mut buf: &[u8], page_no: usize) -> Self {
+        let buf_len = buf.len();
         let page_type = BTreePageType::from(buf.get_u8());
         let header = BTreePageHeader {
             page_type,
@@ -51,6 +52,7 @@ impl BTreePage {
             total_cells: buf.get_u16(),
             cell_content_offset: {
                 let value = buf.get_u16();
+                dbg!(value);
                 if value == 0 {
                     u16::MAX
                 } else if page_no == 0 {
@@ -70,39 +72,28 @@ impl BTreePage {
         };
 
         dbg!(&header);
+        dbg!(&buf.len());
 
         let total_cells = usize::from(header.total_cells);
-        let cell_pointers: Vec<u16> = (0..total_cells)
+        let cell_pointers: Vec<usize> = (0..total_cells)
             .into_iter()
             .map(|_| {
-                if page_no == 0 {
+                let value = if page_no == 0 {
                     buf.get_u16() - HEADER_SIZE as u16
                 } else {
                     buf.get_u16()
-                }
+                };
+
+                usize::from(value - (buf_len - buf.remaining()) as u16)
             })
             .collect();
         dbg!(&cell_pointers);
+        println!("{:x?}", &buf[cell_pointers[2]..cell_pointers[2] + 10]);
 
-        let cells = vec![];
-        dbg!(
-            &buf[usize::from(header.cell_content_offset)
-                ..usize::from(header.cell_content_offset) + 10]
-        );
-        let cell = DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(
-            &buf[usize::from(header.cell_content_offset)..],
-        ));
-        // let cells = cell_pointers
-        //     .into_iter()
-        //     .map(|cell| match page_type {
-        //         BTreePageType::LeafTable => {
-        //             DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(&buf[usize::from(cell)..]))
-        //         }
-        //         _ => todo!("deal with page: {page_type:?}"),
-        //     })
-        //     .collect();
-
-        // Cell pointer value is the offset (offset - 100 if its the first page)
+        // println!("{:x?}", &buf[3665..3665 + 10]);
+        // let cell = DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(
+        //     &buf[usize::from(header.cell_content_offset)..],
+        // ));
 
         Self {
             header,

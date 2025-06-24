@@ -19,6 +19,16 @@ impl BTreeLeafCell {
     pub fn new(mut buf: &[u8]) -> Self {
         let (payload_size, consumed) = parse_varint(buf);
         dbg!(payload_size, consumed);
+        buf.advance(consumed);
+
+        let (row_id, consumed) = parse_varint(buf);
+        dbg!(row_id, consumed);
+        buf.advance(consumed);
+
+        let (record_header_bytes, consumed) = parse_varint(buf);
+        dbg!(record_header_bytes, consumed);
+        buf.advance(consumed);
+
         let serial_types: Vec<RecordSerialType> = (0..0)
             .into_iter()
             .map(|_| RecordSerialType::from(buf.get_u8()))
