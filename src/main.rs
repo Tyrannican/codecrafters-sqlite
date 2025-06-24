@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use sqlite::SqliteReader;
+use sqlite::{cell::RecordValue, SqliteReader};
 use std::str::FromStr;
 
 mod sqlite;
@@ -48,7 +48,23 @@ fn main() -> Result<()> {
             println!("number of tables: {}", page.header.total_cells);
         }
         SqliteCommand::Tables => {
-            //
+            use std::fmt::Write;
+            let page = db.page(0);
+            let cells = page.cells;
+            let mut output = String::new();
+            for cell in cells.iter() {
+                let bt = cell.btree_leaf();
+                match &bt.payload[2] {
+                    RecordValue::String(table) => {
+                        if !table.contains("sqlite") {
+                            write!(output, "{table}")?;
+                        }
+                    }
+                    _ => {}
+                }
+                write!(output, " ")?;
+            }
+            println!("{output}");
         }
     }
 

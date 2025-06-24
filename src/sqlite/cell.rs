@@ -6,30 +6,35 @@ pub enum DatabaseCell {
     BTreeLeafCell(BTreeLeafCell),
 }
 
+impl DatabaseCell {
+    pub fn btree_leaf(&self) -> &BTreeLeafCell {
+        match self {
+            Self::BTreeLeafCell(btlc) => btlc,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct BTreeLeafCell {
-    record_header_size: u64,
-    row_id: u64,
+    record_header_size: i64,
+    row_id: i64,
     serial_types: Vec<RecordSerialType>,
-    payload: Vec<RecordValue>,
+    pub payload: Vec<RecordValue>,
     overflow_page: Option<u32>,
 }
 
 impl BTreeLeafCell {
     pub fn new(mut buf: &[u8]) -> Self {
-        let (payload_size, consumed) = parse_varint(buf);
-        dbg!(payload_size, consumed);
+        let (_payload_size, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
         let (row_id, consumed) = parse_varint(buf);
-        dbg!(row_id, consumed);
         buf.advance(consumed);
 
         let (record_header_bytes, consumed) = parse_varint(buf);
-        dbg!(record_header_bytes, consumed);
         buf.advance(consumed);
 
-        let serial_types: Vec<RecordSerialType> = (0..0)
+        let serial_types: Vec<RecordSerialType> = (0..record_header_bytes as usize - consumed)
             .into_iter()
             .map(|_| RecordSerialType::from(buf.get_u8()))
             .collect();
@@ -64,8 +69,9 @@ impl BTreeLeafCell {
             .collect();
 
         Self {
-            record_header_size: 0,
-            row_id: 0,
+            // TODO: Might be payload size?
+            record_header_size: record_header_bytes,
+            row_id,
             serial_types,
             payload,
             overflow_page: None,
@@ -73,8 +79,8 @@ impl BTreeLeafCell {
     }
 }
 
-#[derive(Debug, PartialEq)]
-enum RecordValue {
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecordValue {
     Null,
     I8(i8),
     I16(i16),

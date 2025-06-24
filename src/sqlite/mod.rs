@@ -4,7 +4,7 @@ use std::{fs::File, path::Path};
 
 use bytes::{Buf, Bytes};
 
-mod cell;
+pub mod cell;
 pub mod page;
 use page::BTreePage;
 
