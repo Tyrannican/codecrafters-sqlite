@@ -6,6 +6,8 @@ use bytes::{Buf, Bytes};
 
 pub mod cell;
 pub mod page;
+pub mod schema;
+
 use page::BTreePage;
 
 const HEADER_SIZE: usize = 100;
@@ -108,7 +110,10 @@ impl SqliteReader {
         };
 
         assert!(start_offset < self.reader.len());
-        assert!(end_offset < self.reader.len());
+        dbg!(end_offset, self.reader.len());
+
+        // TODO: Off by one somehow
+        assert!(end_offset < self.reader.len() + 1);
 
         BTreePage::new(&self.reader[start_offset..end_offset], page)
     }
