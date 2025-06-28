@@ -41,6 +41,7 @@ impl BTreeLeafCell {
             .collect();
 
         println!("Serial types?: {serial_types:?}");
+        println!("Buf remaining: {}", buf.remaining())
 
         let payload: Vec<RecordValue> = serial_types
             .iter()
