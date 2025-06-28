@@ -65,6 +65,7 @@ impl BTreeLeafCell {
                     RecordValue::Blob(blob)
                 }
                 RecordSerialType::String(size) => {
+                    println!("string size: {size}");
                     let data = (0..size).into_iter().map(|_| buf.get_u8()).collect();
                     RecordValue::String(String::from_utf8(data).expect("invalid string format"))
                 }
