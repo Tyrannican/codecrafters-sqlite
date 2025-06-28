@@ -71,6 +71,8 @@ impl BTreeLeafCell {
             })
             .collect();
 
+        println!("payload: {payload:?}");
+
         Self {
             // TODO: Might be payload size?
             record_header_size: record_header_bytes,
