@@ -34,8 +34,8 @@ impl BTreeLeafCell {
         let (payload_header_size, consumed) = parse_varint(payload);
         payload.advance(consumed);
 
-        let mut remaining_header_bytes = payload_header_size as usize - consumed;
         let mut serial_types = vec![];
+        let mut remaining_header_bytes = payload_header_size as usize - consumed;
         while remaining_header_bytes > 0 {
             let (value, consumed) = parse_varint(payload);
             payload.advance(consumed);
@@ -50,8 +50,10 @@ impl BTreeLeafCell {
                 RecordSerialType::Null => RecordValue::Null,
                 RecordSerialType::I8 => RecordValue::I8(payload.get_i8()),
                 RecordSerialType::I16 => RecordValue::I16(payload.get_i16()),
+                // TODO: Parse i24 better (3 bytes)
                 RecordSerialType::I24 => RecordValue::I24(payload.get_i32()),
                 RecordSerialType::I32 => RecordValue::I32(payload.get_i32()),
+                // TODO: Parse i48 better (6 bytes)
                 RecordSerialType::I48 => RecordValue::I48(payload.get_i64()),
                 RecordSerialType::I64 => RecordValue::I64(payload.get_i64()),
                 RecordSerialType::F64 => RecordValue::F64(payload.get_f64()),
