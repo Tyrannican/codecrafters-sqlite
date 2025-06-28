@@ -79,7 +79,6 @@ impl BTreePage {
         let total_cells = usize::from(header.total_cells);
         let mut cell_pointer_buf =
             &buf[header_offset..header_offset + (2 * usize::from(header.total_cells))];
-        println!("cell pointer length: {}", cell_pointer_buf.len());
 
         let cells: Vec<DatabaseCell> = (0..total_cells)
             .into_iter()
@@ -91,6 +90,7 @@ impl BTreePage {
                     offset
                 };
 
+                println!("Cell offset: {offset}");
                 // TODO: Deal with the others as
                 match page_type {
                     BTreePageType::LeafTable => {
