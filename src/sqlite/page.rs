@@ -101,6 +101,8 @@ impl BTreePage {
             })
             .collect();
 
+        println!("cells: {cells:?}");
+
         Self {
             header,
             page_no,
