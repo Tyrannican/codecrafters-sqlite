@@ -40,6 +40,8 @@ impl BTreeLeafCell {
             .map(|_| RecordSerialType::from(buf.get_u8()))
             .collect();
 
+        println!("Serial types?: {serial_types:?}");
+
         let payload: Vec<RecordValue> = serial_types
             .iter()
             .map(|st| match *st {
