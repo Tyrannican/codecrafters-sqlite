@@ -33,6 +33,7 @@ impl BTreeLeafCell {
 
         let (record_header_bytes, consumed) = parse_varint(buf);
         buf.advance(consumed);
+        println!("Row ID: {row_id} Record Bytes: {record_header_bytes}");
 
         let serial_types: Vec<RecordSerialType> = (0..record_header_bytes as usize - consumed)
             .into_iter()
