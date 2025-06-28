@@ -16,7 +16,6 @@ impl DatabaseCell {
 
 #[derive(Debug)]
 pub(crate) struct BTreeLeafCell {
-    record_header_size: i64,
     row_id: i64,
     serial_types: Vec<RecordSerialType>,
     pub payload: Vec<RecordValue>,
@@ -25,63 +24,61 @@ pub(crate) struct BTreeLeafCell {
 
 impl BTreeLeafCell {
     pub fn new(mut buf: &[u8]) -> Self {
-        let (_payload_size, consumed) = parse_varint(buf);
+        let (payload_size, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
         let (row_id, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
-        let (record_header_bytes, consumed) = parse_varint(buf);
-        buf.advance(consumed);
-        println!("Row ID: {row_id} Record Bytes: {record_header_bytes}");
+        let mut payload = &buf[..payload_size as usize];
+        let (payload_header_size, consumed) = parse_varint(payload);
+        payload.advance(consumed);
 
-        let serial_types: Vec<RecordSerialType> = (0..record_header_bytes as usize - consumed)
-            .into_iter()
-            .map(|_| RecordSerialType::from(buf.get_u8()))
-            .collect();
+        let mut remaining_header_bytes = payload_header_size as usize - consumed;
+        let mut serial_types = vec![];
+        while remaining_header_bytes > 0 {
+            let (value, consumed) = parse_varint(payload);
+            payload.advance(consumed);
+            remaining_header_bytes -= consumed;
+            serial_types.push(RecordSerialType::from(value));
+        }
 
-        println!("Serial types?: {serial_types:?}");
-        println!("Buf remaining: {}", buf.remaining());
-
-        let payload: Vec<RecordValue> = serial_types
+        let mut payload = &buf[payload_header_size as usize..payload_size as usize];
+        let payload_values = serial_types
             .iter()
             .map(|st| match *st {
                 RecordSerialType::Null => RecordValue::Null,
-                RecordSerialType::I8 => RecordValue::I8(buf.get_i8()),
-                RecordSerialType::I16 => RecordValue::I16(buf.get_i16()),
-                RecordSerialType::I24 => RecordValue::I24(buf.get_i32()),
-                RecordSerialType::I32 => RecordValue::I32(buf.get_i32()),
-                RecordSerialType::I48 => RecordValue::I48(buf.get_i64()),
-                RecordSerialType::I64 => RecordValue::I64(buf.get_i64()),
-                RecordSerialType::F64 => RecordValue::F64(buf.get_f64()),
+                RecordSerialType::I8 => RecordValue::I8(payload.get_i8()),
+                RecordSerialType::I16 => RecordValue::I16(payload.get_i16()),
+                RecordSerialType::I24 => RecordValue::I24(payload.get_i32()),
+                RecordSerialType::I32 => RecordValue::I32(payload.get_i32()),
+                RecordSerialType::I48 => RecordValue::I48(payload.get_i64()),
+                RecordSerialType::I64 => RecordValue::I64(payload.get_i64()),
+                RecordSerialType::F64 => RecordValue::F64(payload.get_f64()),
                 RecordSerialType::Bool => {
-                    let value = buf.get_u8();
-                    let bool = if value == 0 { false } else { true };
-
-                    RecordValue::Bool(bool)
+                    let value = payload.get_i8();
+                    if value == 1 {
+                        return RecordValue::Bool(true);
+                    }
+                    RecordValue::Bool(false)
                 }
                 RecordSerialType::Blob(size) => {
-                    let blob = (0..size).into_iter().map(|_| buf.get_u8()).collect();
+                    let blob = (0..size).into_iter().map(|_| payload.get_u8()).collect();
                     RecordValue::Blob(blob)
                 }
                 RecordSerialType::String(size) => {
-                    println!("string size: {size}, buf: {}", buf.len());
-                    let data = (0..size).into_iter().map(|_| buf.get_u8()).collect();
-                    RecordValue::String(String::from_utf8(data).expect("invalid string format"))
+                    let bytes: Vec<u8> = (0..size).into_iter().map(|_| payload.get_u8()).collect();
+                    RecordValue::String(String::from_utf8(bytes).expect("not utf8"))
                 }
-                RecordSerialType::Internal => RecordValue::Null,
+                _ => todo!("deal with internal"),
             })
-            .collect();
-
-        println!("payload: {payload:?}");
+            .collect::<Vec<RecordValue>>();
 
         Self {
-            // TODO: Might be payload size?
-            record_header_size: record_header_bytes,
             row_id,
             serial_types,
-            payload,
-            overflow_page: None,
+            payload: payload_values,
+            overflow_page: None, // Not used in this challenge
         }
     }
 }
@@ -117,8 +114,8 @@ enum RecordSerialType {
     Internal,
 }
 
-impl From<u8> for RecordSerialType {
-    fn from(value: u8) -> Self {
+impl From<i64> for RecordSerialType {
+    fn from(value: i64) -> Self {
         match value {
             0 => Self::Null,
             1 => Self::I8,
@@ -130,8 +127,8 @@ impl From<u8> for RecordSerialType {
             7 => Self::F64,
             8 | 9 => Self::Bool,
             10 | 11 => Self::Internal,
-            value if value >= 12 && value % 2 == 0 => Self::Blob((usize::from(value) - 12) / 2),
-            value if value >= 13 && value % 2 != 0 => Self::String((usize::from(value) - 13) / 2),
+            value if value >= 12 && value % 2 == 0 => Self::Blob(((value - 12) / 2) as usize),
+            value if value >= 13 && value % 2 != 0 => Self::String(((value - 13) / 2) as usize),
             _ => panic!("invalid value for record serial type: {value}"),
         }
     }
