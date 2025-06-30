@@ -1,7 +1,6 @@
 use anyhow::Result;
-use clap::{Parser, Subcommand};
-use sqlite::{cell::RecordValue, schema::SqliteSchema, SqliteReader};
-use std::str::FromStr;
+use clap::Parser;
+use sqlite::SqliteReader;
 
 mod sqlite;
 
@@ -27,26 +26,22 @@ fn main() -> Result<()> {
         }
         ".tables" => {
             use std::fmt::Write;
-            let page = db.page(0);
-            let cells = page.cells;
+            let schema = db.schema();
+            let tables = schema.tables();
             let mut output = String::new();
-            for cell in cells.iter() {
-                let bt = cell.btree_leaf();
-                match &bt.payload[2] {
-                    RecordValue::String(table) => {
-                        if !table.contains("sqlite") {
-                            write!(output, "{table}")?;
-                        }
-                    }
-                    _ => {}
+            for table in tables.into_iter() {
+                if table.contains("sqlite") {
+                    continue;
                 }
-                write!(output, " ")?;
+
+                write!(output, "{table} ")?;
             }
-            println!("{output}");
+            println!("{}", output.trim());
         }
         query => {
-            let page = db.page(0);
-            let schema = SqliteSchema::new(page);
+            let schema = db.schema();
+            let thing = sqlite::sql::select_statement(&query).unwrap();
+            println!("THIGN: {thing:#?}");
             let query: Vec<&str> = query.split(" ").collect();
             let query_table = query.last().expect("not enough args");
             let table = schema.fetch_table(&query_table).unwrap();

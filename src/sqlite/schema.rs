@@ -24,6 +24,10 @@ impl SqliteSchema {
     pub fn fetch_table(&self, table: &str) -> Option<&SchemaTable> {
         self.tables.get(table)
     }
+
+    pub fn tables(&self) -> Vec<&str> {
+        self.tables.keys().map(|t| t.as_str()).collect()
+    }
 }
 
 #[derive(Debug)]

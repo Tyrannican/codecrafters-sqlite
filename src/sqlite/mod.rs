@@ -1,5 +1,6 @@
 use anyhow::Result;
 use memmap2::Mmap;
+use schema::SqliteSchema;
 use std::{fs::File, path::Path};
 
 use bytes::{Buf, Bytes};
@@ -7,11 +8,11 @@ use bytes::{Buf, Bytes};
 pub mod cell;
 pub mod page;
 pub mod schema;
+pub mod sql;
 
 use page::BTreePage;
 
 const HEADER_SIZE: usize = 100;
-const MAX_VARINT_SIZE: u8 = 9;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DatabaseHeader {
@@ -110,12 +111,16 @@ impl SqliteReader {
         };
 
         assert!(start_offset < self.reader.len());
-        dbg!(end_offset, self.reader.len());
 
         // TODO: Off by one somehow
         assert!(end_offset < self.reader.len() + 1);
 
         BTreePage::new(&self.reader[start_offset..end_offset], page)
+    }
+
+    pub fn schema(&self) -> SqliteSchema {
+        let schema_page = self.page(0);
+        SqliteSchema::new(schema_page)
     }
 }
 
