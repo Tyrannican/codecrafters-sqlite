@@ -40,13 +40,25 @@ fn main() -> Result<()> {
         }
         query => {
             let schema = db.schema();
-            let thing = sqlite::sql::select_statement(&query).unwrap();
-            println!("THIGN: {thing:#?}");
-            let query: Vec<&str> = query.split(" ").collect();
-            let query_table = query.last().expect("not enough args");
-            let table = schema.fetch_table(&query_table).unwrap();
-            let table_page = db.page(table.root_page as usize);
-            println!("{}", table_page.cells.len());
+            // Only supporting select statements for now
+            let (_, statement) = sqlite::sql::select_statement(&query).unwrap();
+            let table = schema.fetch_table(&statement.table);
+            assert!(table.is_some());
+            let table = table.unwrap();
+
+            // TODO: Refactor
+            match statement.operation {
+                // Count only
+                Some(_) => {
+                    let table_page = db.page(table.root_page as usize);
+                    println!("{}", table_page.count());
+                }
+                None => {
+                    let columns = statement.columns;
+                    let table_page = db.page(table.root_page as usize);
+                    println!("{:#?}", table_page.cells);
+                }
+            }
         }
     }
 

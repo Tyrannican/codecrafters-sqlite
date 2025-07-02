@@ -1,5 +1,5 @@
 use nom::{
-    bytes::complete::{is_not, tag, tag_no_case, take_while1},
+    bytes::complete::{tag, tag_no_case, take_while1},
     character::complete::{char, multispace0},
     combinator::{map, opt},
     multi::separated_list1,
@@ -32,7 +32,18 @@ fn identifier(input: &str) -> IResult<&str, String> {
 }
 
 fn operation(input: &str) -> IResult<&str, Option<Operation>> {
-    todo!();
+    opt(map(
+        (
+            multispace0,
+            tag_no_case("count"),
+            tag("("),
+            char('*'),
+            tag(")"),
+            multispace0,
+        ),
+        |_| Operation::Count,
+    ))
+    .parse(input)
 }
 
 fn column_list(input: &str) -> IResult<&str, Vec<String>> {
@@ -66,8 +77,23 @@ fn where_clause(input: &str) -> IResult<&str, Option<Condition>> {
 
 pub fn select_statement(input: &str) -> IResult<&str, SelectStatement> {
     let (input, _) = (tag_no_case("select"), multispace0).parse(input)?;
-    // TODO: Fix COUNT(*)
-    // let (input, operation) = operation(input)?;
+    let (input, operation) = operation(input)?;
+
+    // TODO: Fix this to be a bit cleaner
+    if operation.is_some() {
+        let (input, _) = (multispace0, tag_no_case("from"), multispace0).parse(input)?;
+        let (input, table) = identifier(input)?;
+        return Ok((
+            input,
+            SelectStatement {
+                operation,
+                columns: Vec::new(),
+                table,
+                where_clause: None,
+            },
+        ));
+    }
+
     let (input, columns) = column_list(input)?;
     let (input, _) = (multispace0, tag_no_case("from"), multispace0).parse(input)?;
     let (input, table) = identifier(input)?;

@@ -104,4 +104,8 @@ impl BTreePage {
             cells,
         }
     }
+
+    pub fn count(&self) -> usize {
+        self.cells.len()
+    }
 }
