@@ -9,10 +9,29 @@ use nom::{
 
 #[derive(Debug)]
 pub struct SelectStatement {
-    pub operation: Option<Operation>,
+    pub operation: Option<SelectOperation>,
     pub columns: Vec<String>,
     pub table: String,
     pub where_clause: Option<Condition>,
+}
+
+#[derive(Debug)]
+pub enum CreateStatement {
+    Table(CreateTable),
+    Index(CreateIndex),
+}
+
+#[derive(Debug)]
+pub struct CreateTable {
+    name: String,
+    columns: Vec<String>,
+}
+
+#[derive(Debug)]
+pub struct CreateIndex {
+    name: String,
+    table: String,
+    table_column: String,
 }
 
 #[derive(Debug)]
@@ -22,7 +41,7 @@ pub struct Condition {
 }
 
 #[derive(Debug)]
-pub enum Operation {
+pub enum SelectOperation {
     Count, // For now, only COUNT(*) is supported
 }
 
@@ -31,7 +50,7 @@ fn identifier(input: &str) -> IResult<&str, String> {
     Ok((input, ident.to_string()))
 }
 
-fn operation(input: &str) -> IResult<&str, Option<Operation>> {
+fn select_operation(input: &str) -> IResult<&str, Option<SelectOperation>> {
     opt(map(
         (
             multispace0,
@@ -41,7 +60,7 @@ fn operation(input: &str) -> IResult<&str, Option<Operation>> {
             tag(")"),
             multispace0,
         ),
-        |_| Operation::Count,
+        |_| SelectOperation::Count,
     ))
     .parse(input)
 }
@@ -77,7 +96,7 @@ fn where_clause(input: &str) -> IResult<&str, Option<Condition>> {
 
 pub fn select_statement(input: &str) -> IResult<&str, SelectStatement> {
     let (input, _) = (tag_no_case("select"), multispace0).parse(input)?;
-    let (input, operation) = operation(input)?;
+    let (input, operation) = select_operation(input)?;
 
     // TODO: Fix this to be a bit cleaner
     if operation.is_some() {
@@ -109,4 +128,28 @@ pub fn select_statement(input: &str) -> IResult<&str, SelectStatement> {
             where_clause,
         },
     ))
+}
+
+pub fn create_statement(input: &str) -> IResult<&str, CreateStatement> {
+    let (input, table_name) = (
+        tag_no_case("create"),
+        multispace0,
+        tag_no_case("table"),
+        multispace0,
+        identifier,
+    )
+        .parse(input)?;
+
+    let (input, columns) = (
+        multispace0,
+        tag("("),
+        multispace0,
+        column_list,
+        multispace0,
+        tag(")"),
+    )
+        .parse(input)?;
+
+    println!("{columns:#?}");
+    todo!();
 }

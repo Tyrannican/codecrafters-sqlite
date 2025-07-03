@@ -36,7 +36,7 @@ pub struct SchemaTable {
     pub name: String,
     pub table_name: String,
     pub root_page: i8,
-    sql: String,
+    pub sql: String,
 }
 
 impl SchemaTable {
@@ -73,5 +73,20 @@ impl SchemaTable {
                 };
             }
         }
+    }
+
+    pub fn columns(&self) {
+        let columns = self
+            .sql
+            .split("\n")
+            .filter_map(|c| {
+                if c.contains("CREATE") || c.contains("(") || c.contains(")") {
+                    return None;
+                }
+
+                return Some(c.trim_start());
+            })
+            .collect::<Vec<&str>>();
+        println!("Columns: {columns:#?}");
     }
 }

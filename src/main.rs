@@ -46,17 +46,19 @@ fn main() -> Result<()> {
             assert!(table.is_some());
             let table = table.unwrap();
 
+            let sql = table.sql.to_owned();
+            sqlite::sql::create_statement(Box::leak(sql.into_boxed_str()))?;
+            let table_page = db.page(table.root_page as usize);
+
             // TODO: Refactor
             match statement.operation {
                 // Count only
                 Some(_) => {
-                    let table_page = db.page(table.root_page as usize);
                     println!("{}", table_page.count());
                 }
                 None => {
                     let columns = statement.columns;
-                    let table_page = db.page(table.root_page as usize);
-                    println!("{:#?}", table_page.cells);
+                    // println!("{:#?}", table_page.cells);
                 }
             }
         }
