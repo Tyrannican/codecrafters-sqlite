@@ -1,5 +1,6 @@
 use super::cell::{DatabaseCell, RecordValue};
 use super::page::{BTreePage, BTreePageType};
+use super::sql::{self, CreateStatement, CreateTable};
 use std::collections::BTreeMap;
 
 // TODO: Deal with anything else that isn't a table
@@ -75,18 +76,12 @@ impl SchemaTable {
         }
     }
 
-    pub fn columns(&self) {
-        let columns = self
-            .sql
-            .split("\n")
-            .filter_map(|c| {
-                if c.contains("CREATE") || c.contains("(") || c.contains(")") {
-                    return None;
-                }
-
-                return Some(c.trim_start());
-            })
-            .collect::<Vec<&str>>();
-        println!("Columns: {columns:#?}");
+    pub fn columns(&self) -> CreateTable {
+        let (_, create_statement) =
+            sql::create_statement(&self.sql).expect("should parse create statement");
+        match create_statement {
+            CreateStatement::Table(t) => t,
+            _ => panic!("expected table, found something else"),
+        }
     }
 }

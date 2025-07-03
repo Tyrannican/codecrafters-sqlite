@@ -45,9 +45,7 @@ fn main() -> Result<()> {
             let table = schema.fetch_table(&statement.table);
             assert!(table.is_some());
             let table = table.unwrap();
-
-            let sql = table.sql.to_owned();
-            sqlite::sql::create_statement(Box::leak(sql.into_boxed_str()))?;
+            let table_columns = table.columns();
             let table_page = db.page(table.root_page as usize);
 
             // TODO: Refactor
@@ -58,6 +56,7 @@ fn main() -> Result<()> {
                 }
                 None => {
                     let columns = statement.columns;
+                    println!("Columns: {columns:#?}");
                     // println!("{:#?}", table_page.cells);
                 }
             }

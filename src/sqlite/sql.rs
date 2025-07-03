@@ -1,6 +1,7 @@
 use nom::{
+    branch::alt,
     bytes::complete::{tag, tag_no_case, take_while1},
-    character::complete::{char, multispace0},
+    character::complete::{char, multispace0, multispace1},
     combinator::{map, opt},
     multi::separated_list1,
     sequence::{delimited, preceded},
@@ -23,8 +24,8 @@ pub enum CreateStatement {
 
 #[derive(Debug)]
 pub struct CreateTable {
-    name: String,
-    columns: Vec<String>,
+    pub name: String,
+    pub columns: Vec<ColumnDefinition>,
 }
 
 #[derive(Debug)]
@@ -32,6 +33,13 @@ pub struct CreateIndex {
     name: String,
     table: String,
     table_column: String,
+}
+
+#[derive(Debug)]
+pub struct ColumnDefinition {
+    pub name: String,
+    pub datatype: String,
+    pub constraints: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -86,6 +94,38 @@ fn condition(input: &str) -> IResult<&str, Condition> {
     ))
 }
 
+fn constraint(input: &str) -> IResult<&str, String> {
+    let keywords = alt((tag_no_case("primary key"), tag_no_case("autoincrement")));
+    map(preceded(multispace1, keywords), |s: &str| s.to_lowercase()).parse(input)
+}
+
+fn multiple_constraints(mut input: &str) -> IResult<&str, Vec<String>> {
+    let mut constraints = Vec::new();
+    while let Ok((next, cons)) = constraint(input) {
+        constraints.push(cons);
+        input = next;
+    }
+
+    Ok((input, constraints))
+}
+
+fn column_definition(input: &str) -> IResult<&str, ColumnDefinition> {
+    let (input, _) = opt(multispace0).parse(input)?;
+    let (input, name) = identifier(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, datatype) = identifier(input)?;
+    let (input, constraints) = multiple_constraints(input)?;
+
+    Ok((
+        input,
+        ColumnDefinition {
+            name,
+            datatype,
+            constraints,
+        },
+    ))
+}
+
 fn where_clause(input: &str) -> IResult<&str, Option<Condition>> {
     opt(preceded(
         (multispace0, tag_no_case("where"), multispace0),
@@ -131,25 +171,29 @@ pub fn select_statement(input: &str) -> IResult<&str, SelectStatement> {
 }
 
 pub fn create_statement(input: &str) -> IResult<&str, CreateStatement> {
-    let (input, table_name) = (
-        tag_no_case("create"),
-        multispace0,
-        tag_no_case("table"),
+    let (input, (_, _, table_name, _)) = (
+        tag_no_case("create table"),
         multispace0,
         identifier,
+        multispace0,
     )
         .parse(input)?;
 
-    let (input, columns) = (
-        multispace0,
-        tag("("),
-        multispace0,
-        column_list,
-        multispace0,
-        tag(")"),
+    let (input, column_definition) = delimited(
+        char('('),
+        separated_list1(
+            delimited(multispace0, char(','), multispace0),
+            column_definition,
+        ),
+        preceded(multispace0, char(')')),
     )
-        .parse(input)?;
+    .parse(input)?;
 
-    println!("{columns:#?}");
-    todo!();
+    Ok((
+        input,
+        CreateStatement::Table(CreateTable {
+            name: table_name,
+            columns: column_definition,
+        }),
+    ))
 }
