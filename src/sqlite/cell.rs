@@ -1,5 +1,9 @@
-use super::parse_varint;
+use super::{
+    parse_varint,
+    sql::{ColumnDefinition, Condition},
+};
 use bytes::Buf;
+use std::fmt::Write;
 
 #[derive(Debug)]
 pub enum DatabaseCell {
@@ -84,8 +88,43 @@ impl BTreeLeafCell {
         }
     }
 
-    pub fn payload(&self) -> &Vec<RecordValue> {
+    pub fn payload(&self) -> &[RecordValue] {
         &self.payload
+    }
+
+    pub fn query_row(
+        &self,
+        search_cols: &[String],
+        schema_cols: &[ColumnDefinition],
+        condition: &Option<Condition>,
+    ) -> Result<String, String> {
+        let mut output = String::new();
+        let mut iter = search_cols.iter().peekable();
+        if let Some(ref cond) = condition {
+            let Some(idx) = schema_cols.iter().position(|c| &c.name == &cond.column) else {
+                return Err(format!("error: no such column '{}'", cond.column));
+            };
+
+            let value = &self.payload[idx];
+            if value.to_string() != cond.value {
+                return Ok(String::new());
+            }
+        }
+
+        while let Some(s_col) = iter.next() {
+            let Some(idx) = schema_cols.iter().position(|c| &c.name == s_col) else {
+                return Err(format!("error: no such column '{s_col}'"));
+            };
+            let value = &self.payload[idx];
+            // Unwraps are fine as writing to a string
+            write!(output, "{value}").unwrap();
+            if iter.peek().is_some() {
+                write!(output, "|").unwrap();
+            }
+        }
+        // dbg!(&output, &search_cols, &schema_cols, condition);
+
+        Ok(output)
     }
 }
 
