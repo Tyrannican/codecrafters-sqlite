@@ -54,7 +54,8 @@ pub enum SelectOperation {
 }
 
 fn identifier(input: &str) -> IResult<&str, String> {
-    let (input, ident) = take_while1(|c: char| c.is_alphanumeric() || c == '_' || c == '*')(input)?;
+    let (input, ident) =
+        take_while1(|c: char| c.is_alphanumeric() || c == '_' || c == '*' || c == '\"')(input)?;
     Ok((input, ident.to_string()))
 }
 
@@ -95,7 +96,11 @@ fn condition(input: &str) -> IResult<&str, Condition> {
 }
 
 fn constraint(input: &str) -> IResult<&str, String> {
-    let keywords = alt((tag_no_case("primary key"), tag_no_case("autoincrement")));
+    let keywords = alt((
+        tag_no_case("primary key"),
+        tag_no_case("autoincrement"),
+        tag_no_case("not null"),
+    ));
     map(preceded(multispace1, keywords), |s: &str| s.to_lowercase()).parse(input)
 }
 

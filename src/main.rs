@@ -18,48 +18,28 @@ fn main() -> Result<()> {
     let db = SqliteReader::new(cli.dbname)?;
 
     match cli.command.as_str() {
-        ".dbinfo" => {
-            println!("database page size: {}", db.database_header.page_size);
-
-            let page = db.page(0);
-            println!("number of tables: {}", page.header.total_cells);
-        }
-        ".tables" => {
-            use std::fmt::Write;
-            let schema = db.schema();
-            let tables = schema.tables();
-            let mut output = String::new();
-            for table in tables.into_iter() {
-                if table.contains("sqlite") {
-                    continue;
-                }
-
-                write!(output, "{table} ")?;
-            }
-            println!("{}", output.trim());
-        }
+        ".dbinfo" => db.dbinfo(),
+        ".tables" => db.tables()?,
         query => {
-            let schema = db.schema();
-            // Only supporting select statements for now
-            let (_, statement) = sqlite::sql::select_statement(&query).unwrap();
-            let table = schema.fetch_table(&statement.table);
-            assert!(table.is_some());
-            let table = table.unwrap();
-            let table_columns = table.columns();
-            let table_page = db.page(table.root_page as usize);
-
-            // TODO: Refactor
-            match statement.operation {
-                // Count only
-                Some(_) => {
-                    println!("{}", table_page.count());
-                }
-                None => {
-                    let columns = statement.columns;
-                    println!("Columns: {columns:#?}");
-                    // println!("{:#?}", table_page.cells);
-                }
-            }
+            db.query(&query)?;
+            // match statement.operation {
+            //     // Count only
+            //     Some(_) => {
+            //         println!("{}", table_page.count());
+            //     }
+            //     None => {
+            //         let columns = statement.columns;
+            //         for column in columns.iter() {
+            //             if let Some(idx) =
+            //                 table_columns.columns.iter().position(|c| &c.name == column)
+            //             {
+            //                 println!("IDX: {idx}");
+            //                 println!("Table: {:#?}", table_page.cells[0]);
+            //             }
+            //         }
+            //         println!("Columns: {columns:#?}");
+            //     }
+            // }
         }
     }
 

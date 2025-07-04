@@ -1,7 +1,7 @@
 use anyhow::Result;
 use memmap2::Mmap;
 use schema::SqliteSchema;
-use std::{fs::File, path::Path};
+use std::{fmt::Write, fs::File, path::Path};
 
 use bytes::{Buf, Bytes};
 
@@ -121,6 +121,72 @@ impl SqliteReader {
     pub fn schema(&self) -> SqliteSchema {
         let schema_page = self.page(0);
         SqliteSchema::new(schema_page)
+    }
+
+    pub fn dbinfo(&self) {
+        println!("database page size: {}", self.database_header.page_size);
+
+        let page = self.page(0);
+        println!("number of tables: {}", page.header.total_cells);
+    }
+
+    pub fn tables(&self) -> Result<()> {
+        let schema = self.schema();
+        let tables = schema.tables();
+        let mut output = String::new();
+        for table in tables.into_iter() {
+            if table.contains("sqlite") {
+                continue;
+            }
+
+            write!(output, "{table} ")?;
+        }
+        println!("{}", output.trim());
+
+        Ok(())
+    }
+
+    // Only supporting select statements for now
+    pub fn query(&self, query: &str) -> Result<()> {
+        let schema = self.schema();
+        let (_, statement) = sql::select_statement(&query).unwrap();
+        let Some(table) = schema.fetch_table(&statement.table) else {
+            eprintln!("error: no such table '{}'", statement.table);
+            return Ok(());
+        };
+
+        let table_page = self.page(table.root_page as usize);
+        if statement.operation.is_some() {
+            println!("{}", table_page.cells.len())
+        }
+        let table_schema = table.columns();
+        for row in table_page.cells.iter() {
+            let row = row.btree_leaf();
+            let values = row.payload();
+            let mut output = String::new();
+            let mut col_iter = statement.columns.iter().peekable();
+            while let Some(column_name) = col_iter.next() {
+                let Some(idx) = table_schema
+                    .columns
+                    .iter()
+                    .position(|c| &c.name == column_name)
+                else {
+                    eprintln!("error: no such column '{column_name}'");
+                    return Ok(());
+                };
+                write!(output, "{}", values[idx])?;
+
+                if col_iter.peek().is_some() {
+                    write!(output, "|")?;
+                } else {
+                    writeln!(output)?
+                }
+            }
+
+            print!("{output}");
+        }
+
+        Ok(())
     }
 }
 

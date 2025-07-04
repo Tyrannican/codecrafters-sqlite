@@ -83,6 +83,10 @@ impl BTreeLeafCell {
             overflow_page: None, // Not used in this challenge
         }
     }
+
+    pub fn payload(&self) -> &Vec<RecordValue> {
+        &self.payload
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,6 +102,24 @@ pub enum RecordValue {
     Bool(bool),
     Blob(Vec<u8>),
     String(String),
+}
+
+impl std::fmt::Display for RecordValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Null => write!(f, "null"),
+            Self::I8(i8) => write!(f, "{i8}"),
+            Self::I16(i16) => write!(f, "{i16}"),
+            Self::I24(i24) => write!(f, "{i24}"),
+            Self::I32(i32) => write!(f, "{i32}"),
+            Self::I48(i48) => write!(f, "{i48}"),
+            Self::I64(i64) => write!(f, "{i64}"),
+            Self::F64(f64) => write!(f, "{f64}"),
+            Self::Bool(bool) => write!(f, "{bool}"),
+            Self::Blob(blob) => write!(f, "blob ({} bytes)", blob.len()),
+            Self::String(s) => write!(f, "{s}"),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

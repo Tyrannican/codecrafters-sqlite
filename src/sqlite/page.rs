@@ -93,7 +93,7 @@ impl BTreePage {
                     BTreePageType::LeafTable => {
                         DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(&buf[offset..]))
                     }
-                    _ => todo!("when the time is right"),
+                    other => todo!("when the time is right: {other:#?}"),
                 }
             })
             .collect();
@@ -103,6 +103,11 @@ impl BTreePage {
             page_no,
             cells,
         }
+    }
+
+    pub fn fetch_row(&self, row: usize) -> &DatabaseCell {
+        assert!(row < self.cells.len());
+        &self.cells[row]
     }
 
     pub fn count(&self) -> usize {
