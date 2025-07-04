@@ -157,9 +157,12 @@ impl SqliteReader {
 
         let table_page = self.page(table.root_page as usize);
         if statement.operation.is_some() {
-            println!("{}", table_page.cells.len())
+            println!("{}", table_page.cells.len());
+            return Ok(());
         }
+
         let table_schema = table.columns();
+        let mut output_cols = Vec::new();
         for row in table_page.cells.iter() {
             let row = row.btree_leaf();
             let values = row.payload();
@@ -174,16 +177,27 @@ impl SqliteReader {
                     eprintln!("error: no such column '{column_name}'");
                     return Ok(());
                 };
+
+                if let Some(cond) = &statement.where_clause {
+                    if &cond.column == column_name && values[idx].to_string() != cond.value {
+                        output.clear();
+                        continue;
+                    }
+                }
                 write!(output, "{}", values[idx])?;
 
                 if col_iter.peek().is_some() {
                     write!(output, "|")?;
-                } else {
-                    writeln!(output)?
                 }
             }
 
-            print!("{output}");
+            if !output.is_empty() {
+                output_cols.push(output);
+            }
+        }
+
+        for o in output_cols {
+            println!("{o}");
         }
 
         Ok(())
