@@ -1,6 +1,6 @@
 use bytes::Buf;
 
-use super::cell::{BTreeLeafCell, DatabaseCell};
+use super::cell::{BTreeInteriorTableCell, BTreeLeafCell, DatabaseCell};
 use super::HEADER_SIZE;
 
 #[repr(u8)]
@@ -92,6 +92,14 @@ impl BTreePage {
                 match page_type {
                     BTreePageType::LeafTable => {
                         DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(&buf[offset..]))
+                    }
+                    BTreePageType::InteriorTable => {
+                        let thing = DatabaseCell::BTreeInteriorTableCell(
+                            BTreeInteriorTableCell::new(&buf[offset..]),
+                        );
+
+                        dbg!(&thing);
+                        thing
                     }
                     other => todo!("when the time is right: {other:#?}"),
                 }

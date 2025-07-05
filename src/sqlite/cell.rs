@@ -8,12 +8,21 @@ use std::fmt::Write;
 #[derive(Debug)]
 pub enum DatabaseCell {
     BTreeLeafCell(BTreeLeafCell),
+    BTreeInteriorTableCell(BTreeInteriorTableCell),
 }
 
 impl DatabaseCell {
-    pub fn btree_leaf(&self) -> &BTreeLeafCell {
+    pub fn is_btree_leaf(&self) -> Option<&BTreeLeafCell> {
         match self {
-            Self::BTreeLeafCell(btlc) => btlc,
+            Self::BTreeLeafCell(btlc) => Some(btlc),
+            _ => None,
+        }
+    }
+
+    pub fn is_btree_interior_table_cell(&self) -> Option<&BTreeInteriorTableCell> {
+        match self {
+            Self::BTreeInteriorTableCell(btic) => Some(btic),
+            _ => None,
         }
     }
 }
@@ -125,6 +134,22 @@ impl BTreeLeafCell {
         // dbg!(&output, &search_cols, &schema_cols, condition);
 
         Ok(output)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BTreeInteriorTableCell {
+    pub left_child: u32,
+    pub row_id: i64,
+}
+
+impl BTreeInteriorTableCell {
+    pub fn new(mut buf: &[u8]) -> Self {
+        let left_child = buf.get_u32();
+        let (row_id, consumed) = parse_varint(buf);
+        buf.advance(consumed);
+
+        Self { left_child, row_id }
     }
 }
 

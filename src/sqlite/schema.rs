@@ -73,6 +73,7 @@ impl SchemaTable {
                     sql: sql.clone(),
                 };
             }
+            _ => todo!(),
         }
     }
 

@@ -1,6 +1,8 @@
 use anyhow::Result;
+use cell::DatabaseCell;
 use memmap2::Mmap;
 use schema::SqliteSchema;
+use sql::SelectStatement;
 use std::{fmt::Write, fs::File, path::Path};
 
 use bytes::{Buf, Bytes};
@@ -162,11 +164,19 @@ impl SqliteReader {
         }
 
         let table_schema = table.columns();
+        // This deals with a single cell
+        // In the case of Interior pages, we need to deal with multiple cells
+        // Some kind of feedback
         let cols: Vec<String> = table_page
             .cells
             .iter()
             .filter_map(|row| {
-                let row = row.btree_leaf();
+                let Some(row) = row.is_btree_leaf() else {
+                    let interior = row.is_btree_interior_table_cell().unwrap();
+                    let page = self.page(interior.left_child as usize);
+                    dbg!(interior, page);
+                    todo!();
+                };
                 match row.query_row(
                     &statement.columns,
                     &table_schema.columns,
@@ -192,6 +202,10 @@ impl SqliteReader {
         }
 
         Ok(())
+    }
+
+    fn parse_cell(&self, statement: &SelectStatement, cell: &DatabaseCell) -> Option<String> {
+        todo!()
     }
 }
 
