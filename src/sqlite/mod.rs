@@ -1,8 +1,8 @@
 use anyhow::Result;
-use cell::DatabaseCell;
+use cell::{BTreeLeafCell, DatabaseCell};
 use memmap2::Mmap;
 use schema::SqliteSchema;
-use sql::SelectStatement;
+use sql::{CreateTable, SelectStatement};
 use std::{fmt::Write, fs::File, path::Path};
 
 use bytes::{Buf, Bytes};
@@ -166,7 +166,32 @@ impl SqliteReader {
         let table_schema = table.columns();
         // This deals with a single cell
         // In the case of Interior pages, we need to deal with multiple cells
-        // Some kind of feedback
+        // Some kind of feedback / recursion
+
+        let mut tmp = Vec::new();
+        for row in table_page.cells.iter() {
+            match row {
+                DatabaseCell::BTreeLeafCell(leaf) => {
+                    let result = self.parse_cell(&statement, &table_schema, leaf);
+                    tmp.push(result);
+                }
+                DatabaseCell::BTreeInteriorTableCell(interior) => {
+                    let interior_page = self.page(interior.left_child as usize);
+                    println!("INTERIOR PAGE");
+                    // TODO: Deal with Index Leaf Cells
+                    let results: Vec<Option<String>> = interior_page
+                        .cells
+                        .iter()
+                        .map(|ir| {
+                            self.parse_cell(&statement, &table_schema, ir.is_btree_leaf().unwrap())
+                        })
+                        .collect();
+                    tmp.extend(results);
+                }
+            }
+        }
+        dbg!(tmp);
+
         let cols: Vec<String> = table_page
             .cells
             .iter()
@@ -174,7 +199,6 @@ impl SqliteReader {
                 let Some(row) = row.is_btree_leaf() else {
                     let interior = row.is_btree_interior_table_cell().unwrap();
                     let page = self.page(interior.left_child as usize);
-                    dbg!(interior, page);
                     todo!();
                 };
                 match row.query_row(
@@ -204,8 +228,29 @@ impl SqliteReader {
         Ok(())
     }
 
-    fn parse_cell(&self, statement: &SelectStatement, cell: &DatabaseCell) -> Option<String> {
-        todo!()
+    fn parse_cell(
+        &self,
+        statement: &SelectStatement,
+        table_schema: &CreateTable,
+        row: &BTreeLeafCell,
+    ) -> Option<String> {
+        match row.query_row(
+            &statement.columns,
+            &table_schema.columns,
+            &statement.where_clause,
+        ) {
+            Ok(s) => {
+                if !s.is_empty() {
+                    Some(s)
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                None
+            }
+        }
     }
 }
 

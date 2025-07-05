@@ -93,14 +93,9 @@ impl BTreePage {
                     BTreePageType::LeafTable => {
                         DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(&buf[offset..]))
                     }
-                    BTreePageType::InteriorTable => {
-                        let thing = DatabaseCell::BTreeInteriorTableCell(
-                            BTreeInteriorTableCell::new(&buf[offset..]),
-                        );
-
-                        dbg!(&thing);
-                        thing
-                    }
+                    BTreePageType::InteriorTable => DatabaseCell::BTreeInteriorTableCell(
+                        BTreeInteriorTableCell::new(&buf[offset..]),
+                    ),
                     other => todo!("when the time is right: {other:#?}"),
                 }
             })

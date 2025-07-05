@@ -97,10 +97,6 @@ impl BTreeLeafCell {
         }
     }
 
-    pub fn payload(&self) -> &[RecordValue] {
-        &self.payload
-    }
-
     pub fn query_row(
         &self,
         search_cols: &[String],
