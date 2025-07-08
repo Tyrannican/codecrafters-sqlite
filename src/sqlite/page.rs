@@ -65,12 +65,11 @@ impl BTreePage {
                 }
             },
             fragmented_free_bytes: header_bytes.get_u8(),
-            rightmost_pointer: if page_type == BTreePageType::InteriorIndex
-                || page_type == BTreePageType::InteriorTable
-            {
-                Some(header_bytes.get_u32())
-            } else {
-                None
+            rightmost_pointer: match page_type {
+                BTreePageType::InteriorTable | BTreePageType::InteriorIndex => {
+                    Some(header_bytes.get_u32())
+                }
+                _ => None,
             },
         };
 

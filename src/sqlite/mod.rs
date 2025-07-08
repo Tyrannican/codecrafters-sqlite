@@ -167,63 +167,51 @@ impl SqliteReader {
         // This deals with a single cell
         // In the case of Interior pages, we need to deal with multiple cells
         // Some kind of feedback / recursion
-
-        let mut tmp = Vec::new();
-        for row in table_page.cells.iter() {
-            match row {
-                DatabaseCell::BTreeLeafCell(leaf) => {
-                    let result = self.parse_cell(&statement, &table_schema, leaf);
-                    tmp.push(result);
+        for cell in table_page.cells.iter() {
+            match cell {
+                DatabaseCell::BTreeLeafCell(btlc) => {
+                    // dbg!(btlc);
                 }
-                DatabaseCell::BTreeInteriorTableCell(interior) => {
-                    let interior_page = self.page(interior.left_child as usize);
-                    println!("INTERIOR PAGE");
-                    // TODO: Deal with Index Leaf Cells
-                    let results: Vec<Option<String>> = interior_page
-                        .cells
-                        .iter()
-                        .map(|ir| {
-                            self.parse_cell(&statement, &table_schema, ir.is_btree_leaf().unwrap())
-                        })
-                        .collect();
-                    tmp.extend(results);
+                DatabaseCell::BTreeInteriorTableCell(interior_table) => {
+                    let page = self.page(interior_table.left_child as usize);
+                    dbg!(page);
                 }
             }
         }
-        dbg!(tmp);
 
-        let cols: Vec<String> = table_page
-            .cells
-            .iter()
-            .filter_map(|row| {
-                let Some(row) = row.is_btree_leaf() else {
-                    let interior = row.is_btree_interior_table_cell().unwrap();
-                    let page = self.page(interior.left_child as usize);
-                    todo!();
-                };
-                match row.query_row(
-                    &statement.columns,
-                    &table_schema.columns,
-                    &statement.where_clause,
-                ) {
-                    Ok(s) => {
-                        if !s.is_empty() {
-                            Some(s)
-                        } else {
-                            None
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("{e}");
-                        None
-                    }
-                }
-            })
-            .collect();
+        // let cols: Vec<String> = table_page
+        //     .cells
+        //     .iter()
+        //     .filter_map(|row| {
+        //         let Some(row) = row.is_btree_leaf() else {
+        //             let interior = row.is_btree_interior_table_cell().unwrap();
+        //             let page = self.page(interior.left_child as usize);
+        //             dbg!(page);
+        //             todo!();
+        //         };
+        //         match row.query_row(
+        //             &statement.columns,
+        //             &table_schema.columns,
+        //             &statement.where_clause,
+        //         ) {
+        //             Ok(s) => {
+        //                 if !s.is_empty() {
+        //                     Some(s)
+        //                 } else {
+        //                     None
+        //                 }
+        //             }
+        //             Err(e) => {
+        //                 eprintln!("{e}");
+        //                 None
+        //             }
+        //         }
+        //     })
+        //     .collect();
 
-        for result in cols {
-            println!("{result}");
-        }
+        // for result in cols {
+        //     println!("{result}");
+        // }
 
         Ok(())
     }
