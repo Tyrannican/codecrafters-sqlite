@@ -88,7 +88,6 @@ pub struct SqliteReader {
     pub database_header: DatabaseHeader,
 }
 
-// TODO: This will be the way forward
 impl SqliteReader {
     pub fn new(path: impl AsRef<Path>) -> Result<Self> {
         let db = File::open(path)?;
@@ -167,14 +166,15 @@ impl SqliteReader {
         // This deals with a single cell
         // In the case of Interior pages, we need to deal with multiple cells
         // Some kind of feedback / recursion
+        // dbg!(&table_page.cells);
         for cell in table_page.cells.iter() {
             match cell {
                 DatabaseCell::BTreeLeafCell(btlc) => {
                     // dbg!(btlc);
                 }
                 DatabaseCell::BTreeInteriorTableCell(interior_table) => {
+                    dbg!(interior_table.left_child);
                     let page = self.page(interior_table.left_child as usize);
-                    dbg!(page);
                 }
             }
         }

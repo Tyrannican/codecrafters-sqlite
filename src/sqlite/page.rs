@@ -73,6 +73,7 @@ impl BTreePage {
             },
         };
 
+        dbg!(&header);
         let total_cells = usize::from(header.total_cells);
         let mut cell_pointer_buf =
             &buf[header_offset..header_offset + (2 * usize::from(header.total_cells))];
@@ -87,7 +88,6 @@ impl BTreePage {
                     offset
                 };
 
-                // TODO: Deal with the others as
                 match page_type {
                     BTreePageType::LeafTable => {
                         DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(&buf[offset..]))
@@ -95,7 +95,7 @@ impl BTreePage {
                     BTreePageType::InteriorTable => DatabaseCell::BTreeInteriorTableCell(
                         BTreeInteriorTableCell::new(&buf[offset..]),
                     ),
-                    other => todo!("when the time is right: {other:#?}"),
+                    other => todo!("not parsing yet: {other:#?}"),
                 }
             })
             .collect();

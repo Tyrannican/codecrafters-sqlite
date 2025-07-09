@@ -57,17 +57,34 @@ impl BTreeLeafCell {
         }
 
         let mut payload = &buf[payload_header_size as usize..payload_size as usize];
+        // FIX: i24 and i48 don't look right but it'll do for now
+        // FIX: Off-by-one on a table when looking at string
         let payload_values = serial_types
             .iter()
             .map(|st| match *st {
                 RecordSerialType::Null => RecordValue::Null,
                 RecordSerialType::I8 => RecordValue::I8(payload.get_i8()),
                 RecordSerialType::I16 => RecordValue::I16(payload.get_i16()),
-                // TODO: Parse i24 better (3 bytes)
-                RecordSerialType::I24 => RecordValue::I24(payload.get_i32()),
+                RecordSerialType::I24 => {
+                    let buf: [u8; 3] = [buf.get_u8(), buf.get_u8(), buf.get_u8()];
+                    let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
+                    let bytes = [sign, buf[0], buf[1], buf[2]];
+                    RecordValue::I24(i32::from_be_bytes(bytes))
+                }
                 RecordSerialType::I32 => RecordValue::I32(payload.get_i32()),
-                // TODO: Parse i48 better (6 bytes)
-                RecordSerialType::I48 => RecordValue::I48(payload.get_i64()),
+                RecordSerialType::I48 => {
+                    let buf: [u8; 6] = [
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                    ];
+                    let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
+                    let bytes = [sign, sign, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]];
+                    RecordValue::I48(i64::from_be_bytes(bytes))
+                }
                 RecordSerialType::I64 => RecordValue::I64(payload.get_i64()),
                 RecordSerialType::F64 => RecordValue::F64(payload.get_f64()),
                 RecordSerialType::Bool => {
@@ -127,7 +144,6 @@ impl BTreeLeafCell {
                 write!(output, "|").unwrap();
             }
         }
-        // dbg!(&output, &search_cols, &schema_cols, condition);
 
         Ok(output)
     }
@@ -135,8 +151,8 @@ impl BTreeLeafCell {
 
 #[derive(Debug, Clone)]
 pub struct BTreeInteriorTableCell {
-    pub left_child: u32,
     pub row_id: i64,
+    pub left_child: u32,
 }
 
 impl BTreeInteriorTableCell {
@@ -145,7 +161,10 @@ impl BTreeInteriorTableCell {
         let (row_id, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
-        Self { left_child, row_id }
+        Self {
+            left_child: left_child - 1,
+            row_id,
+        }
     }
 }
 
