@@ -66,7 +66,7 @@ impl BTreeLeafCell {
                 RecordSerialType::I8 => RecordValue::I8(payload.get_i8()),
                 RecordSerialType::I16 => RecordValue::I16(payload.get_i16()),
                 RecordSerialType::I24 => {
-                    let buf: [u8; 3] = [buf.get_u8(), buf.get_u8(), buf.get_u8()];
+                    let buf: [u8; 3] = [payload.get_u8(), payload.get_u8(), payload.get_u8()];
                     let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
                     let bytes = [sign, buf[0], buf[1], buf[2]];
                     RecordValue::I24(i32::from_be_bytes(bytes))
@@ -74,12 +74,12 @@ impl BTreeLeafCell {
                 RecordSerialType::I32 => RecordValue::I32(payload.get_i32()),
                 RecordSerialType::I48 => {
                     let buf: [u8; 6] = [
-                        buf.get_u8(),
-                        buf.get_u8(),
-                        buf.get_u8(),
-                        buf.get_u8(),
-                        buf.get_u8(),
-                        buf.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
                     ];
                     let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
                     let bytes = [sign, sign, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]];
@@ -87,13 +87,8 @@ impl BTreeLeafCell {
                 }
                 RecordSerialType::I64 => RecordValue::I64(payload.get_i64()),
                 RecordSerialType::F64 => RecordValue::F64(payload.get_f64()),
-                RecordSerialType::Bool => {
-                    let value = payload.get_i8();
-                    if value == 1 {
-                        return RecordValue::Bool(true);
-                    }
-                    RecordValue::Bool(false)
-                }
+                RecordSerialType::False => RecordValue::Bool(false),
+                RecordSerialType::True => RecordValue::Bool(true),
                 RecordSerialType::Blob(size) => {
                     let blob = (0..size).into_iter().map(|_| payload.get_u8()).collect();
                     RecordValue::Blob(blob)
@@ -211,7 +206,8 @@ enum RecordSerialType {
     I48,
     I64,
     F64,
-    Bool,
+    False,
+    True,
     Blob(usize),
     String(usize),
     Internal,
@@ -228,7 +224,8 @@ impl From<i64> for RecordSerialType {
             5 => Self::I48,
             6 => Self::I64,
             7 => Self::F64,
-            8 | 9 => Self::Bool,
+            8 => Self::False,
+            9 => Self::True,
             10 | 11 => Self::Internal,
             value if value >= 12 && value % 2 == 0 => Self::Blob(((value - 12) / 2) as usize),
             value if value >= 13 && value % 2 != 0 => Self::String(((value - 13) / 2) as usize),
