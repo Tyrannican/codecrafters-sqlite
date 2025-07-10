@@ -1,6 +1,9 @@
 use nom::{
     branch::alt,
-    bytes::complete::{tag, tag_no_case, take_while1},
+    bytes::{
+        complete::{tag, tag_no_case, take_while1},
+        take_until,
+    },
     character::complete::{char, multispace0, multispace1},
     combinator::{map, opt},
     multi::separated_list1,
@@ -53,10 +56,23 @@ pub enum SelectOperation {
     Count, // For now, only COUNT(*) is supported
 }
 
-fn identifier(input: &str) -> IResult<&str, String> {
+fn identifier_with_quotes(input: &str) -> IResult<&str, String> {
+    map(
+        delimited(tag("\""), take_until("\""), tag("\"")),
+        |s: &str| s.to_string(),
+    )
+    .parse(input)
+}
+
+fn raw_identifier(input: &str) -> IResult<&str, String> {
     let (input, ident) =
         take_while1(|c: char| c.is_alphanumeric() || c == '_' || c == '*' || c == '\"')(input)?;
+
     Ok((input, ident.to_string()))
+}
+
+fn identifier(input: &str) -> IResult<&str, String> {
+    alt((identifier_with_quotes, raw_identifier)).parse(input)
 }
 
 fn select_operation(input: &str) -> IResult<&str, Option<SelectOperation>> {

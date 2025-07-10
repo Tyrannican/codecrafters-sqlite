@@ -122,7 +122,6 @@ impl BTreeLeafCell {
             if *value == RecordValue::Null && s_col == "id" {
                 write!(output, "{}", self.row_id).unwrap();
             } else {
-                // Unwraps are fine as writing to a string
                 write!(output, "{value}").unwrap();
             }
             if iter.peek().is_some() {
