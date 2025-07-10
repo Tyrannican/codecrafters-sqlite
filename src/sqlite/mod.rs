@@ -151,11 +151,19 @@ impl SqliteReader {
     pub fn query(&self, query: &str) -> Result<()> {
         let schema = self.schema();
         let (_, statement) = sql::select_statement(&query).unwrap();
-        let Some(table) = schema.fetch_table(&statement.table) else {
-            eprintln!("error: no such table '{}'", statement.table);
-            return Ok(());
+        let table = match schema.fetch_index(&statement.table) {
+            Some(idx) => idx,
+            None => {
+                let Some(table) = schema.fetch_table(&statement.table) else {
+                    eprintln!("error: no such table '{}'", statement.table);
+                    return Ok(());
+                };
+
+                table
+            }
         };
 
+        // TODO: Parse InteriorIndex
         let table_page = self.page(table.root_page as usize);
         if statement.operation.is_some() {
             println!("{}", table_page.count());

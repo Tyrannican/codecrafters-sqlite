@@ -1,6 +1,6 @@
 use super::cell::{DatabaseCell, RecordValue};
 use super::page::{BTreePage, BTreePageType};
-use super::sql::{self, CreateStatement, CreateTable};
+use super::sql::{self, CreateIndex, CreateStatement, CreateTable};
 use std::collections::BTreeMap;
 
 // TODO: Deal with anything else that isn't a table
@@ -21,6 +21,16 @@ impl SqliteSchema {
         }
 
         Self { tables }
+    }
+
+    pub fn fetch_index(&self, table: &str) -> Option<&SchemaTable> {
+        for value in self.tables.values() {
+            if value.table_name == table && &value.sqlite_type == "index" {
+                return Some(value);
+            }
+        }
+
+        None
     }
 
     pub fn fetch_table(&self, table: &str) -> Option<&SchemaTable> {
@@ -75,6 +85,15 @@ impl SchemaTable {
                 };
             }
             _ => todo!(),
+        }
+    }
+
+    pub fn indexes(&self) -> CreateIndex {
+        let (_, create_statement) =
+            sql::create_statement(&self.sql).expect("should parse create statement");
+        match create_statement {
+            CreateStatement::Index(i) => i,
+            _ => panic!("expected index, found something else"),
         }
     }
 

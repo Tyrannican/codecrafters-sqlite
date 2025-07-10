@@ -192,6 +192,18 @@ pub fn select_statement(input: &str) -> IResult<&str, SelectStatement> {
 }
 
 pub fn create_statement(input: &str) -> IResult<&str, CreateStatement> {
+    if input.contains("INDEX") || input.contains("index") {
+        return create_index_statement(input);
+    }
+
+    create_table_statement(input)
+}
+
+fn create_index_statement(input: &str) -> IResult<&str, CreateStatement> {
+    todo!("create index statement")
+}
+
+fn create_table_statement(input: &str) -> IResult<&str, CreateStatement> {
     let (input, (_, _, table_name, _)) = (
         tag_no_case("create table"),
         multispace0,
