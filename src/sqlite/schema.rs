@@ -4,6 +4,7 @@ use super::sql::{self, CreateStatement, CreateTable};
 use std::collections::BTreeMap;
 
 // TODO: Deal with anything else that isn't a table
+// TODO: ^^^ Now is the time
 #[derive(Debug)]
 pub struct SqliteSchema {
     tables: BTreeMap<String, SchemaTable>,
