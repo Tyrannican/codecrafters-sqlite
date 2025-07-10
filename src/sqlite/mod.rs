@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cell::{BTreeLeafCell, DatabaseCell};
+use cell::{BTreeInteriorTableCell, BTreeLeafCell, DatabaseCell};
 use memmap2::Mmap;
 use schema::SqliteSchema;
 use sql::{CreateTable, SelectStatement};
@@ -163,60 +163,37 @@ impl SqliteReader {
         }
 
         let table_schema = table.columns();
-        // This deals with a single cell
-        // In the case of Interior pages, we need to deal with multiple cells
-        // Some kind of feedback / recursion
-        // dbg!(&table_page.cells);
-        for cell in table_page.cells.iter() {
-            match cell {
-                DatabaseCell::BTreeLeafCell(btlc) => {
-                    // dbg!(btlc);
-                }
-                DatabaseCell::BTreeInteriorTableCell(interior_table) => {
-                    dbg!(interior_table.left_child);
-                    let page = self.page(interior_table.left_child as usize);
-                }
-            }
+        let rows = self.traverse_rows(&table_page.cells);
+        let cols: Vec<String> = rows
+            .iter()
+            .filter_map(|row| self.parse_row(&statement, &table_schema, row))
+            .collect();
+
+        for result in cols {
+            println!("{result}");
         }
-
-        // let cols: Vec<String> = table_page
-        //     .cells
-        //     .iter()
-        //     .filter_map(|row| {
-        //         let Some(row) = row.is_btree_leaf() else {
-        //             let interior = row.is_btree_interior_table_cell().unwrap();
-        //             let page = self.page(interior.left_child as usize);
-        //             dbg!(page);
-        //             todo!();
-        //         };
-        //         match row.query_row(
-        //             &statement.columns,
-        //             &table_schema.columns,
-        //             &statement.where_clause,
-        //         ) {
-        //             Ok(s) => {
-        //                 if !s.is_empty() {
-        //                     Some(s)
-        //                 } else {
-        //                     None
-        //                 }
-        //             }
-        //             Err(e) => {
-        //                 eprintln!("{e}");
-        //                 None
-        //             }
-        //         }
-        //     })
-        //     .collect();
-
-        // for result in cols {
-        //     println!("{result}");
-        // }
 
         Ok(())
     }
 
-    fn parse_cell(
+    fn traverse_rows(&self, cells: &[DatabaseCell]) -> Vec<BTreeLeafCell> {
+        let mut rows = vec![];
+        for cell in cells.iter() {
+            match cell {
+                DatabaseCell::BTreeLeafCell(leaf) => rows.push(leaf.clone()),
+                DatabaseCell::BTreeInteriorTableCell(interior_table) => {
+                    // FIX: Assuming that an interior page points to only one other page
+                    let page = self.page(interior_table.left_child as usize);
+                    let interior_cells = self.traverse_rows(&page.cells[..]);
+                    rows.extend(interior_cells);
+                }
+            }
+        }
+
+        rows
+    }
+
+    fn parse_row(
         &self,
         statement: &SelectStatement,
         table_schema: &CreateTable,

@@ -82,7 +82,7 @@ fn condition(input: &str) -> IResult<&str, Condition> {
     let (input, (column, _, value)) = (
         identifier,
         delimited(multispace0, char('='), multispace0),
-        take_while1(|c: char| c.is_alphanumeric() || c == '\'' || c == '_'),
+        take_while1(|c: char| c.is_alphanumeric() || c == '\'' || c == '_' || c == ' '),
     )
         .parse(input)?;
 

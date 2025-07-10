@@ -5,29 +5,13 @@ use super::{
 use bytes::Buf;
 use std::fmt::Write;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DatabaseCell {
     BTreeLeafCell(BTreeLeafCell),
     BTreeInteriorTableCell(BTreeInteriorTableCell),
 }
 
-impl DatabaseCell {
-    pub fn is_btree_leaf(&self) -> Option<&BTreeLeafCell> {
-        match self {
-            Self::BTreeLeafCell(btlc) => Some(btlc),
-            _ => None,
-        }
-    }
-
-    pub fn is_btree_interior_table_cell(&self) -> Option<&BTreeInteriorTableCell> {
-        match self {
-            Self::BTreeInteriorTableCell(btic) => Some(btic),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct BTreeLeafCell {
     row_id: i64,
     serial_types: Vec<RecordSerialType>,
@@ -133,8 +117,14 @@ impl BTreeLeafCell {
                 return Err(format!("error: no such column '{s_col}'"));
             };
             let value = &self.payload[idx];
-            // Unwraps are fine as writing to a string
-            write!(output, "{value}").unwrap();
+
+            // Temporary
+            if *value == RecordValue::Null && s_col == "id" {
+                write!(output, "{}", self.row_id).unwrap();
+            } else {
+                // Unwraps are fine as writing to a string
+                write!(output, "{value}").unwrap();
+            }
             if iter.peek().is_some() {
                 write!(output, "|").unwrap();
             }
@@ -196,7 +186,7 @@ impl std::fmt::Display for RecordValue {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum RecordSerialType {
     Null,
     I8,

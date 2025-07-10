@@ -73,7 +73,6 @@ impl BTreePage {
             },
         };
 
-        dbg!(&header);
         let total_cells = usize::from(header.total_cells);
         let mut cell_pointer_buf =
             &buf[header_offset..header_offset + (2 * usize::from(header.total_cells))];
