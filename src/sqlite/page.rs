@@ -1,6 +1,6 @@
 use bytes::Buf;
 
-use super::cell::{BTreeInteriorTableCell, BTreeLeafCell, DatabaseCell};
+use super::cell::{DatabaseCell, IndexLeafCell, InteriorIndexCell, InteriorTableCell, LeafCell};
 use super::HEADER_SIZE;
 
 #[repr(u8)]
@@ -89,12 +89,17 @@ impl BTreePage {
 
                 match page_type {
                     BTreePageType::LeafTable => {
-                        DatabaseCell::BTreeLeafCell(BTreeLeafCell::new(&buf[offset..]))
+                        DatabaseCell::LeafCell(LeafCell::new(&buf[offset..]))
                     }
-                    BTreePageType::InteriorTable => DatabaseCell::BTreeInteriorTableCell(
-                        BTreeInteriorTableCell::new(&buf[offset..]),
-                    ),
-                    other => todo!("not parsing yet: {other:#?}"),
+                    BTreePageType::InteriorTable => {
+                        DatabaseCell::InteriorTableCell(InteriorTableCell::new(&buf[offset..]))
+                    }
+                    BTreePageType::InteriorIndex => {
+                        DatabaseCell::InteriorIndexCell(InteriorIndexCell::new(&buf[offset..]))
+                    }
+                    BTreePageType::LeafIndex => {
+                        DatabaseCell::IndexLeafCell(IndexLeafCell::new(&buf[offset..]))
+                    }
                 }
             })
             .collect();
@@ -104,6 +109,10 @@ impl BTreePage {
             page_no,
             cells,
         }
+    }
+
+    pub fn right_page_pointer(&self) -> Option<u32> {
+        self.header.rightmost_pointer
     }
 
     pub fn fetch_row(&self, row: usize) -> &DatabaseCell {

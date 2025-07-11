@@ -3,8 +3,6 @@ use super::page::{BTreePage, BTreePageType};
 use super::sql::{self, CreateIndex, CreateStatement, CreateTable};
 use std::collections::BTreeMap;
 
-// TODO: Deal with anything else that isn't a table
-// TODO: ^^^ Now is the time
 #[derive(Debug)]
 pub struct SqliteSchema {
     tables: BTreeMap<String, SchemaTable>,
@@ -54,7 +52,7 @@ pub struct SchemaTable {
 impl SchemaTable {
     pub fn new(cell: &DatabaseCell) -> Self {
         match cell {
-            DatabaseCell::BTreeLeafCell(inner) => {
+            DatabaseCell::LeafCell(inner) => {
                 assert!(inner.payload.len() == 5);
                 let RecordValue::String(sqlite_type) = &inner.payload[0] else {
                     panic!("expected a string(sqlite_type)");

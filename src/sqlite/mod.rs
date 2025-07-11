@@ -1,7 +1,7 @@
 use anyhow::Result;
-use cell::{BTreeInteriorTableCell, BTreeLeafCell, DatabaseCell};
+use cell::{DatabaseCell, InteriorTableCell, LeafCell, RecordValue};
 use memmap2::Mmap;
-use schema::SqliteSchema;
+use schema::{SchemaTable, SqliteSchema};
 use sql::{CreateTable, SelectStatement};
 use std::{fmt::Write, fs::File, path::Path};
 
@@ -18,29 +18,29 @@ const HEADER_SIZE: usize = 100;
 
 #[derive(Debug, Copy, Clone)]
 pub struct DatabaseHeader {
-    pub magic: [u8; 16],
+    magic: [u8; 16],
     pub page_size: u16,
-    pub write_version: u8,
-    pub read_version: u8,
-    pub reserved_space: u8,
-    pub max_payload: u8,
-    pub min_payload: u8,
-    pub leaf_payload: u8,
-    pub file_change_counter: u32,
-    pub in_header_database_size: u32,
-    pub freelist_trunk_page_page_no: u32,
-    pub total_freelist_pages: u32,
-    pub schema_cookie: u32,
-    pub schema_format_number: u32,
-    pub default_page_cache_size: u32,
-    pub largest_root_b_tree_page: u32,
-    pub text_encoding: u32,
-    pub user_version: u32,
-    pub incremental_vacuum_mode: u32,
-    pub application_id: u32,
-    pub reserved_expansion: [u8; 20],
-    pub version_valid_for_number: u32,
-    pub sqlite_version_number: u32,
+    write_version: u8,
+    read_version: u8,
+    reserved_space: u8,
+    max_payload: u8,
+    min_payload: u8,
+    leaf_payload: u8,
+    file_change_counter: u32,
+    in_header_database_size: u32,
+    freelist_trunk_page_page_no: u32,
+    total_freelist_pages: u32,
+    schema_cookie: u32,
+    schema_format_number: u32,
+    default_page_cache_size: u32,
+    largest_root_b_tree_page: u32,
+    text_encoding: u32,
+    user_version: u32,
+    incremental_vacuum_mode: u32,
+    application_id: u32,
+    reserved_expansion: [u8; 20],
+    version_valid_for_number: u32,
+    sqlite_version_number: u32,
 }
 
 impl DatabaseHeader {
@@ -151,19 +151,31 @@ impl SqliteReader {
     pub fn query(&self, query: &str) -> Result<()> {
         let schema = self.schema();
         let (_, statement) = sql::select_statement(&query).unwrap();
-        let table = match schema.fetch_index(&statement.table) {
-            Some(idx) => idx,
+
+        match statement.where_clause {
+            Some(_) => match schema.fetch_index(&statement.table) {
+                Some(idx) => self.parse_index(idx, &statement),
+                None => {
+                    let Some(table) = schema.fetch_table(&statement.table) else {
+                        eprintln!("error: no such table '{}'", statement.table);
+                        return Ok(());
+                    };
+
+                    self.full_table_scan(table, &statement)
+                }
+            },
             None => {
                 let Some(table) = schema.fetch_table(&statement.table) else {
                     eprintln!("error: no such table '{}'", statement.table);
                     return Ok(());
                 };
 
-                table
+                self.full_table_scan(table, &statement)
             }
-        };
+        }
+    }
 
-        // TODO: Parse InteriorIndex
+    fn full_table_scan(&self, table: &SchemaTable, statement: &SelectStatement) -> Result<()> {
         let table_page = self.page(table.root_page as usize);
         if statement.operation.is_some() {
             println!("{}", table_page.count());
@@ -184,17 +196,47 @@ impl SqliteReader {
         Ok(())
     }
 
-    fn traverse_rows(&self, cells: &[DatabaseCell]) -> Vec<BTreeLeafCell> {
+    fn parse_index(&self, index: &SchemaTable, statement: &SelectStatement) -> Result<()> {
+        let index_page = self.page(index.root_page as usize);
+        self.parse_cells_test(&index_page.cells, index_page.right_page_pointer());
+        todo!("parsing index");
+    }
+
+    fn parse_cells_test(&self, cells: &[DatabaseCell], rightmost: Option<u32>) {
+        match rightmost {
+            Some(value) => {
+                let page = self.page(value as usize);
+                self.parse_cells_test(&page.cells, page.right_page_pointer());
+            }
+            None => {}
+        }
+
+        for cell in cells {
+            match cell {
+                DatabaseCell::IndexLeafCell(leaf) => {
+                    println!("Leaf: {leaf:#?}");
+                }
+                DatabaseCell::InteriorIndexCell(interior_table) => {
+                    let page = self.page(interior_table.left_child as usize);
+                    self.parse_cells_test(&page.cells[..], page.right_page_pointer());
+                }
+                other => todo!("{other:#?} rows"),
+            }
+        }
+    }
+
+    fn traverse_rows(&self, cells: &[DatabaseCell]) -> Vec<LeafCell> {
         let mut rows = vec![];
+
         for cell in cells.iter() {
             match cell {
-                DatabaseCell::BTreeLeafCell(leaf) => rows.push(leaf.clone()),
-                DatabaseCell::BTreeInteriorTableCell(interior_table) => {
-                    // FIX: Assuming that an interior page points to only one other page
+                DatabaseCell::LeafCell(leaf) => rows.push(leaf.clone()),
+                DatabaseCell::InteriorTableCell(interior_table) => {
                     let page = self.page(interior_table.left_child as usize);
                     let interior_cells = self.traverse_rows(&page.cells[..]);
                     rows.extend(interior_cells);
                 }
+                _ => todo!("traversing rows"),
             }
         }
 
@@ -205,7 +247,7 @@ impl SqliteReader {
         &self,
         statement: &SelectStatement,
         table_schema: &CreateTable,
-        row: &BTreeLeafCell,
+        row: &LeafCell,
     ) -> Option<String> {
         match row.query_row(
             &statement.columns,

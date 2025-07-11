@@ -7,19 +7,21 @@ use std::fmt::Write;
 
 #[derive(Debug, Clone)]
 pub enum DatabaseCell {
-    BTreeLeafCell(BTreeLeafCell),
-    BTreeInteriorTableCell(BTreeInteriorTableCell),
+    LeafCell(LeafCell),
+    IndexLeafCell(IndexLeafCell),
+    InteriorTableCell(InteriorTableCell),
+    InteriorIndexCell(InteriorIndexCell),
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct BTreeLeafCell {
+pub(crate) struct LeafCell {
     row_id: i64,
     serial_types: Vec<RecordSerialType>,
     pub payload: Vec<RecordValue>,
     overflow_page: Option<u32>,
 }
 
-impl BTreeLeafCell {
+impl LeafCell {
     pub fn new(mut buf: &[u8]) -> Self {
         let (payload_size, consumed) = parse_varint(buf);
         buf.advance(consumed);
@@ -41,8 +43,6 @@ impl BTreeLeafCell {
         }
 
         let mut payload = &buf[payload_header_size as usize..payload_size as usize];
-        // FIX: i24 and i48 don't look right but it'll do for now
-        // FIX: Off-by-one on a table when looking at string
         let payload_values = serial_types
             .iter()
             .map(|st| match *st {
@@ -134,12 +134,12 @@ impl BTreeLeafCell {
 }
 
 #[derive(Debug, Clone)]
-pub struct BTreeInteriorTableCell {
+pub struct InteriorTableCell {
     pub row_id: i64,
     pub left_child: u32,
 }
 
-impl BTreeInteriorTableCell {
+impl InteriorTableCell {
     pub fn new(mut buf: &[u8]) -> Self {
         let left_child = buf.get_u32();
         let (row_id, consumed) = parse_varint(buf);
@@ -148,6 +148,154 @@ impl BTreeInteriorTableCell {
         Self {
             left_child: left_child - 1,
             row_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct InteriorIndexCell {
+    pub left_child: u32,
+    pub key_index: Vec<RecordValue>,
+}
+
+impl InteriorIndexCell {
+    pub fn new(mut buf: &[u8]) -> Self {
+        let left_child = buf.get_u32();
+
+        let (payload_size, consumed) = parse_varint(buf);
+        buf.advance(consumed);
+
+        let mut payload = &buf[..payload_size as usize];
+        let (payload_header_size, consumed) = parse_varint(payload);
+        payload.advance(consumed);
+
+        let mut serial_types = vec![];
+        let mut remaining_header_bytes = payload_header_size as usize - consumed;
+        while remaining_header_bytes > 0 {
+            let (value, consumed) = parse_varint(payload);
+            payload.advance(consumed);
+            remaining_header_bytes -= consumed;
+            serial_types.push(RecordSerialType::from(value));
+        }
+
+        let mut payload = &buf[payload_header_size as usize..payload_size as usize];
+        let payload_values = serial_types
+            .iter()
+            .map(|st| match *st {
+                RecordSerialType::Null => RecordValue::Null,
+                RecordSerialType::I8 => RecordValue::I8(payload.get_i8()),
+                RecordSerialType::I16 => RecordValue::I16(payload.get_i16()),
+                RecordSerialType::I24 => {
+                    let buf: [u8; 3] = [payload.get_u8(), payload.get_u8(), payload.get_u8()];
+                    let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
+                    let bytes = [sign, buf[0], buf[1], buf[2]];
+                    RecordValue::I24(i32::from_be_bytes(bytes))
+                }
+                RecordSerialType::I32 => RecordValue::I32(payload.get_i32()),
+                RecordSerialType::I48 => {
+                    let buf: [u8; 6] = [
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                    ];
+                    let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
+                    let bytes = [sign, sign, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]];
+                    RecordValue::I48(i64::from_be_bytes(bytes))
+                }
+                RecordSerialType::I64 => RecordValue::I64(payload.get_i64()),
+                RecordSerialType::F64 => RecordValue::F64(payload.get_f64()),
+                RecordSerialType::False => RecordValue::Bool(false),
+                RecordSerialType::True => RecordValue::Bool(true),
+                RecordSerialType::Blob(size) => {
+                    let blob = (0..size).into_iter().map(|_| payload.get_u8()).collect();
+                    RecordValue::Blob(blob)
+                }
+                RecordSerialType::String(size) => {
+                    let bytes: Vec<u8> = (0..size).into_iter().map(|_| payload.get_u8()).collect();
+                    RecordValue::String(String::from_utf8(bytes).expect("not utf8"))
+                }
+                _ => todo!("deal with internal"),
+            })
+            .collect::<Vec<RecordValue>>();
+
+        Self {
+            left_child: left_child - 1,
+            key_index: payload_values,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexLeafCell {
+    pub records: Vec<RecordValue>,
+}
+
+impl IndexLeafCell {
+    pub fn new(mut buf: &[u8]) -> Self {
+        let (payload_size, consumed) = parse_varint(buf);
+        buf.advance(consumed);
+
+        let mut payload = &buf[..payload_size as usize];
+        let (payload_header_size, consumed) = parse_varint(payload);
+        payload.advance(consumed);
+
+        let mut serial_types = vec![];
+        let mut remaining_header_bytes = payload_header_size as usize - consumed;
+        while remaining_header_bytes > 0 {
+            let (value, consumed) = parse_varint(payload);
+            payload.advance(consumed);
+            remaining_header_bytes -= consumed;
+            serial_types.push(RecordSerialType::from(value));
+        }
+
+        let mut payload = &buf[payload_header_size as usize..payload_size as usize];
+        let payload_values = serial_types
+            .iter()
+            .map(|st| match *st {
+                RecordSerialType::Null => RecordValue::Null,
+                RecordSerialType::I8 => RecordValue::I8(payload.get_i8()),
+                RecordSerialType::I16 => RecordValue::I16(payload.get_i16()),
+                RecordSerialType::I24 => {
+                    let buf: [u8; 3] = [payload.get_u8(), payload.get_u8(), payload.get_u8()];
+                    let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
+                    let bytes = [sign, buf[0], buf[1], buf[2]];
+                    RecordValue::I24(i32::from_be_bytes(bytes))
+                }
+                RecordSerialType::I32 => RecordValue::I32(payload.get_i32()),
+                RecordSerialType::I48 => {
+                    let buf: [u8; 6] = [
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                        payload.get_u8(),
+                    ];
+                    let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
+                    let bytes = [sign, sign, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]];
+                    RecordValue::I48(i64::from_be_bytes(bytes))
+                }
+                RecordSerialType::I64 => RecordValue::I64(payload.get_i64()),
+                RecordSerialType::F64 => RecordValue::F64(payload.get_f64()),
+                RecordSerialType::False => RecordValue::Bool(false),
+                RecordSerialType::True => RecordValue::Bool(true),
+                RecordSerialType::Blob(size) => {
+                    let blob = (0..size).into_iter().map(|_| payload.get_u8()).collect();
+                    RecordValue::Blob(blob)
+                }
+                RecordSerialType::String(size) => {
+                    let bytes: Vec<u8> = (0..size).into_iter().map(|_| payload.get_u8()).collect();
+                    RecordValue::String(String::from_utf8(bytes).expect("not utf8"))
+                }
+                _ => todo!("deal with internal"),
+            })
+            .collect::<Vec<RecordValue>>();
+
+        Self {
+            records: payload_values,
         }
     }
 }
