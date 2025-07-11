@@ -15,7 +15,7 @@ pub enum DatabaseCell {
 
 #[derive(Debug, Clone)]
 pub(crate) struct LeafCell {
-    row_id: i64,
+    pub row_id: i64,
     serial_types: Vec<RecordSerialType>,
     pub payload: Vec<RecordValue>,
     overflow_page: Option<u32>,
@@ -155,147 +155,160 @@ impl InteriorTableCell {
 #[derive(Debug, Clone)]
 pub struct InteriorIndexCell {
     pub left_child: u32,
-    pub key_index: Vec<RecordValue>,
+    pub key: String,
 }
 
 impl InteriorIndexCell {
     pub fn new(mut buf: &[u8]) -> Self {
         let left_child = buf.get_u32();
-
-        let (payload_size, consumed) = parse_varint(buf);
+        let (_, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
-        let mut payload = &buf[..payload_size as usize];
-        let (payload_header_size, consumed) = parse_varint(payload);
-        payload.advance(consumed);
+        let (header_size, consumed) = parse_varint(buf);
+        buf.advance(consumed);
 
-        let mut serial_types = vec![];
-        let mut remaining_header_bytes = payload_header_size as usize - consumed;
+        let mut serial_types = Vec::new();
+        let mut remaining_header_bytes = header_size as usize - consumed;
         while remaining_header_bytes > 0 {
-            let (value, consumed) = parse_varint(payload);
-            payload.advance(consumed);
+            let (value, consumed) = parse_varint(buf);
+            buf.advance(consumed);
             remaining_header_bytes -= consumed;
             serial_types.push(RecordSerialType::from(value));
         }
-
-        let mut payload = &buf[payload_header_size as usize..payload_size as usize];
         let payload_values = serial_types
             .iter()
             .map(|st| match *st {
                 RecordSerialType::Null => RecordValue::Null,
-                RecordSerialType::I8 => RecordValue::I8(payload.get_i8()),
-                RecordSerialType::I16 => RecordValue::I16(payload.get_i16()),
+                RecordSerialType::I8 => RecordValue::I8(buf.get_i8()),
+                RecordSerialType::I16 => RecordValue::I16(buf.get_i16()),
                 RecordSerialType::I24 => {
-                    let buf: [u8; 3] = [payload.get_u8(), payload.get_u8(), payload.get_u8()];
+                    let buf: [u8; 3] = [buf.get_u8(), buf.get_u8(), buf.get_u8()];
                     let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
                     let bytes = [sign, buf[0], buf[1], buf[2]];
                     RecordValue::I24(i32::from_be_bytes(bytes))
                 }
-                RecordSerialType::I32 => RecordValue::I32(payload.get_i32()),
+                RecordSerialType::I32 => RecordValue::I32(buf.get_i32()),
                 RecordSerialType::I48 => {
                     let buf: [u8; 6] = [
-                        payload.get_u8(),
-                        payload.get_u8(),
-                        payload.get_u8(),
-                        payload.get_u8(),
-                        payload.get_u8(),
-                        payload.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
                     ];
                     let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
                     let bytes = [sign, sign, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]];
                     RecordValue::I48(i64::from_be_bytes(bytes))
                 }
-                RecordSerialType::I64 => RecordValue::I64(payload.get_i64()),
-                RecordSerialType::F64 => RecordValue::F64(payload.get_f64()),
+                RecordSerialType::I64 => RecordValue::I64(buf.get_i64()),
+                RecordSerialType::F64 => RecordValue::F64(buf.get_f64()),
                 RecordSerialType::False => RecordValue::Bool(false),
                 RecordSerialType::True => RecordValue::Bool(true),
                 RecordSerialType::Blob(size) => {
-                    let blob = (0..size).into_iter().map(|_| payload.get_u8()).collect();
+                    let blob = (0..size).into_iter().map(|_| buf.get_u8()).collect();
                     RecordValue::Blob(blob)
                 }
                 RecordSerialType::String(size) => {
-                    let bytes: Vec<u8> = (0..size).into_iter().map(|_| payload.get_u8()).collect();
+                    let bytes: Vec<u8> = (0..size).into_iter().map(|_| buf.get_u8()).collect();
                     RecordValue::String(String::from_utf8(bytes).expect("not utf8"))
                 }
                 _ => todo!("deal with internal"),
             })
             .collect::<Vec<RecordValue>>();
 
+        let RecordValue::String(key) = &payload_values[0] else {
+            panic!("only supporting string index keys");
+        };
+
         Self {
             left_child: left_child - 1,
-            key_index: payload_values,
+            key: key.to_string(),
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct IndexLeafCell {
-    pub records: Vec<RecordValue>,
+    pub key: String,
+    pub row_id: i64,
 }
 
 impl IndexLeafCell {
     pub fn new(mut buf: &[u8]) -> Self {
-        let (payload_size, consumed) = parse_varint(buf);
+        let (_, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
-        let mut payload = &buf[..payload_size as usize];
-        let (payload_header_size, consumed) = parse_varint(payload);
-        payload.advance(consumed);
+        let (header_size, consumed) = parse_varint(buf);
+        buf.advance(consumed);
 
-        let mut serial_types = vec![];
-        let mut remaining_header_bytes = payload_header_size as usize - consumed;
+        let mut serial_types = Vec::new();
+        let mut remaining_header_bytes = header_size as usize - consumed;
         while remaining_header_bytes > 0 {
-            let (value, consumed) = parse_varint(payload);
-            payload.advance(consumed);
+            let (value, consumed) = parse_varint(buf);
+            buf.advance(consumed);
             remaining_header_bytes -= consumed;
             serial_types.push(RecordSerialType::from(value));
         }
-
-        let mut payload = &buf[payload_header_size as usize..payload_size as usize];
         let payload_values = serial_types
             .iter()
             .map(|st| match *st {
                 RecordSerialType::Null => RecordValue::Null,
-                RecordSerialType::I8 => RecordValue::I8(payload.get_i8()),
-                RecordSerialType::I16 => RecordValue::I16(payload.get_i16()),
+                RecordSerialType::I8 => RecordValue::I8(buf.get_i8()),
+                RecordSerialType::I16 => RecordValue::I16(buf.get_i16()),
                 RecordSerialType::I24 => {
-                    let buf: [u8; 3] = [payload.get_u8(), payload.get_u8(), payload.get_u8()];
+                    let buf: [u8; 3] = [buf.get_u8(), buf.get_u8(), buf.get_u8()];
                     let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
                     let bytes = [sign, buf[0], buf[1], buf[2]];
                     RecordValue::I24(i32::from_be_bytes(bytes))
                 }
-                RecordSerialType::I32 => RecordValue::I32(payload.get_i32()),
+                RecordSerialType::I32 => RecordValue::I32(buf.get_i32()),
                 RecordSerialType::I48 => {
                     let buf: [u8; 6] = [
-                        payload.get_u8(),
-                        payload.get_u8(),
-                        payload.get_u8(),
-                        payload.get_u8(),
-                        payload.get_u8(),
-                        payload.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
+                        buf.get_u8(),
                     ];
                     let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
                     let bytes = [sign, sign, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]];
                     RecordValue::I48(i64::from_be_bytes(bytes))
                 }
-                RecordSerialType::I64 => RecordValue::I64(payload.get_i64()),
-                RecordSerialType::F64 => RecordValue::F64(payload.get_f64()),
+                RecordSerialType::I64 => RecordValue::I64(buf.get_i64()),
+                RecordSerialType::F64 => RecordValue::F64(buf.get_f64()),
                 RecordSerialType::False => RecordValue::Bool(false),
                 RecordSerialType::True => RecordValue::Bool(true),
                 RecordSerialType::Blob(size) => {
-                    let blob = (0..size).into_iter().map(|_| payload.get_u8()).collect();
+                    let blob = (0..size).into_iter().map(|_| buf.get_u8()).collect();
                     RecordValue::Blob(blob)
                 }
                 RecordSerialType::String(size) => {
-                    let bytes: Vec<u8> = (0..size).into_iter().map(|_| payload.get_u8()).collect();
+                    let bytes: Vec<u8> = (0..size).into_iter().map(|_| buf.get_u8()).collect();
                     RecordValue::String(String::from_utf8(bytes).expect("not utf8"))
                 }
                 _ => todo!("deal with internal"),
             })
             .collect::<Vec<RecordValue>>();
 
+        let RecordValue::String(key) = &payload_values[0] else {
+            panic!("only supporting string index keys");
+        };
+
+        let row_id = match &payload_values[1] {
+            RecordValue::I8(value) => *value as i64,
+            RecordValue::I16(value) => *value as i64,
+            RecordValue::I24(value) => *value as i64,
+            RecordValue::I32(value) => *value as i64,
+            RecordValue::I48(value) => *value as i64,
+            RecordValue::I64(value) => *value,
+            _ => panic!("only supporting numeric ids"),
+        };
+
         Self {
-            records: payload_values,
+            key: key.to_string(),
+            row_id,
         }
     }
 }

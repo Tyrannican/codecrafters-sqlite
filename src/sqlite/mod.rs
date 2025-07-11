@@ -152,26 +152,17 @@ impl SqliteReader {
         let schema = self.schema();
         let (_, statement) = sql::select_statement(&query).unwrap();
 
+        let Some(table) = schema.fetch_table(&statement.table) else {
+            eprintln!("error: no such table '{}'", statement.table);
+            return Ok(());
+        };
+
         match statement.where_clause {
             Some(_) => match schema.fetch_index(&statement.table) {
-                Some(idx) => self.parse_index(idx, &statement),
-                None => {
-                    let Some(table) = schema.fetch_table(&statement.table) else {
-                        eprintln!("error: no such table '{}'", statement.table);
-                        return Ok(());
-                    };
-
-                    self.full_table_scan(table, &statement)
-                }
+                Some(idx) => self.index_scan(idx, table, &statement),
+                None => self.full_table_scan(table, &statement),
             },
-            None => {
-                let Some(table) = schema.fetch_table(&statement.table) else {
-                    eprintln!("error: no such table '{}'", statement.table);
-                    return Ok(());
-                };
-
-                self.full_table_scan(table, &statement)
-            }
+            None => self.full_table_scan(table, &statement),
         }
     }
 
@@ -196,33 +187,53 @@ impl SqliteReader {
         Ok(())
     }
 
-    fn parse_index(&self, index: &SchemaTable, statement: &SelectStatement) -> Result<()> {
+    fn index_scan(
+        &self,
+        index: &SchemaTable,
+        table: &SchemaTable,
+        statement: &SelectStatement,
+    ) -> Result<()> {
         let index_page = self.page(index.root_page as usize);
-        self.parse_cells_test(&index_page.cells, index_page.right_page_pointer());
+        let search_key = &statement.where_clause.as_ref().unwrap().value;
+        let row_ids = self.parse_cells_test(&index_page, &search_key);
+
+        let table_root_page = self.page(table.root_page as usize);
+        let schema = table.columns();
+
         todo!("parsing index");
     }
 
-    fn parse_cells_test(&self, cells: &[DatabaseCell], rightmost: Option<u32>) {
-        match rightmost {
-            Some(value) => {
-                let page = self.page(value as usize);
-                self.parse_cells_test(&page.cells, page.right_page_pointer());
-            }
-            None => {}
-        }
+    fn parse_cells_test(&self, page: &BTreePage, search_key: &str) -> Vec<i64> {
+        let mut row_ids = Vec::new();
+        let cells = &page.cells;
+        let rightmost = page.right_page_pointer();
 
         for cell in cells {
             match cell {
                 DatabaseCell::IndexLeafCell(leaf) => {
-                    println!("Leaf: {leaf:#?}");
+                    if search_key == leaf.key {
+                        row_ids.push(leaf.row_id);
+                    }
                 }
                 DatabaseCell::InteriorIndexCell(interior_table) => {
-                    let page = self.page(interior_table.left_child as usize);
-                    self.parse_cells_test(&page.cells[..], page.right_page_pointer());
+                    if search_key <= interior_table.key.as_str() {
+                        let page = self.page(interior_table.left_child as usize);
+                        row_ids.extend(self.parse_cells_test(&page, search_key));
+                    } else {
+                        let right_page = rightmost.unwrap();
+                        let page = self.page(right_page as usize);
+                        row_ids.extend(self.parse_cells_test(&page, search_key));
+                    }
                 }
                 other => todo!("{other:#?} rows"),
             }
         }
+
+        row_ids
+    }
+
+    fn traverse_index_rows(&self, page: &BTreePage, id: i64) -> Option<LeafCell> {
+        None
     }
 
     fn traverse_rows(&self, cells: &[DatabaseCell]) -> Vec<LeafCell> {
