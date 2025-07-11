@@ -12,7 +12,7 @@ pub mod page;
 pub mod schema;
 pub mod sql;
 
-use page::BTreePage;
+use page::{BTreePage, BTreePageType};
 
 const HEADER_SIZE: usize = 100;
 
@@ -196,13 +196,13 @@ impl SqliteReader {
         let index_page = self.page(index.root_page as usize);
         let search_key = &statement.where_clause.as_ref().unwrap().value;
         let row_ids = self.parse_cells_test(&index_page, &search_key);
-
-        let table_root_page = self.page(table.root_page as usize);
-        let schema = table.columns();
+        dbg!(row_ids);
 
         todo!("parsing index");
     }
 
+    // FIX: There's a missing row in the tests
+    // Am I even parsing them right...?
     fn parse_cells_test(&self, page: &BTreePage, search_key: &str) -> Vec<i64> {
         let mut row_ids = Vec::new();
         let cells = &page.cells;
