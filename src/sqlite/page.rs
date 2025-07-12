@@ -3,6 +3,9 @@ use bytes::Buf;
 use super::cell::{DatabaseCell, IndexLeafCell, InteriorIndexCell, InteriorTableCell, LeafCell};
 use super::HEADER_SIZE;
 
+const LEAF_OFFSET: usize = 8;
+const INTERIOR_OFFSET: usize = 12;
+
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BTreePageType {
@@ -45,8 +48,8 @@ impl BTreePage {
     pub fn new(buf: &[u8], page_no: usize) -> Self {
         let page_type = BTreePageType::from(buf[0]);
         let header_offset = match page_type {
-            BTreePageType::LeafTable | BTreePageType::LeafIndex => 8,
-            BTreePageType::InteriorIndex | BTreePageType::InteriorTable => 12,
+            BTreePageType::LeafTable | BTreePageType::LeafIndex => LEAF_OFFSET,
+            BTreePageType::InteriorIndex | BTreePageType::InteriorTable => INTERIOR_OFFSET,
         };
         let mut header_bytes = &buf[1..header_offset];
 

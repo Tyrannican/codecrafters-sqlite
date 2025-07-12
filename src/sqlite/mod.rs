@@ -3,7 +3,7 @@ use cell::{DatabaseCell, InteriorTableCell, LeafCell, RecordValue};
 use memmap2::Mmap;
 use schema::{SchemaTable, SqliteSchema};
 use sql::{CreateTable, SelectStatement};
-use std::{fmt::Write, fs::File, path::Path};
+use std::{fmt::Write, fs::File, hash::Hash, path::Path};
 
 use bytes::{Buf, Bytes};
 
@@ -195,8 +195,6 @@ impl SqliteReader {
     ) -> Result<()> {
         let index_page = self.page(index.root_page as usize);
         let search_key = &statement.where_clause.as_ref().unwrap().value;
-        let row_ids = self.parse_cells_test(&index_page, &search_key);
-        dbg!(row_ids);
 
         todo!("parsing index");
     }
@@ -206,26 +204,32 @@ impl SqliteReader {
     fn parse_cells_test(&self, page: &BTreePage, search_key: &str) -> Vec<i64> {
         let mut row_ids = Vec::new();
         let cells = &page.cells;
-        let rightmost = page.right_page_pointer();
+        let right_page_number = page.right_page_pointer();
 
-        for cell in cells {
+        for cell in cells.iter() {
             match cell {
+                DatabaseCell::InteriorIndexCell(index_cell) => {
+                    if search_key <= index_cell.key.as_str() {
+                        let left_page = self.page(index_cell.left_child as usize);
+                        row_ids.extend(self.parse_cells_test(&left_page, search_key));
+                    } else {
+                        let Some(rpn) = right_page_number else {
+                            panic!("expected a right page for index - found nothing");
+                        };
+
+                        let right_page = self.page(rpn as usize);
+                        row_ids.extend(self.parse_cells_test(&right_page, search_key));
+                    }
+                }
                 DatabaseCell::IndexLeafCell(leaf) => {
-                    if search_key == leaf.key {
+                    if leaf.key.as_str() == "zambia" {
+                        dbg!("zambia");
+                    }
+                    if search_key == leaf.key.as_str() {
                         row_ids.push(leaf.row_id);
                     }
                 }
-                DatabaseCell::InteriorIndexCell(interior_table) => {
-                    if search_key <= interior_table.key.as_str() {
-                        let page = self.page(interior_table.left_child as usize);
-                        row_ids.extend(self.parse_cells_test(&page, search_key));
-                    } else {
-                        let right_page = rightmost.unwrap();
-                        let page = self.page(right_page as usize);
-                        row_ids.extend(self.parse_cells_test(&page, search_key));
-                    }
-                }
-                other => todo!("{other:#?} rows"),
+                other => panic!("expected index cell - got {other:#?}"),
             }
         }
 

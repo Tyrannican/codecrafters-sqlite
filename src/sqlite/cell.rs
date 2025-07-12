@@ -135,6 +135,7 @@ impl InteriorIndexCell {
             remaining_header_bytes -= consumed;
             serial_types.push(RecordSerialType::from(value));
         }
+
         let payload_values = serial_types_to_record_values(&serial_types, buf);
 
         let RecordValue::String(key) = &payload_values[0] else {
