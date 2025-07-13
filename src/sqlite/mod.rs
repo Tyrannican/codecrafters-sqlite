@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cell::{DatabaseCell, InteriorTableCell, LeafCell, RecordValue};
+use cell::{DatabaseCell, IndexLeafCell, InteriorTableCell, LeafCell, RecordValue};
 use memmap2::Mmap;
 use schema::{SchemaTable, SqliteSchema};
 use sql::{CreateTable, SelectStatement};
@@ -174,7 +174,7 @@ impl SqliteReader {
         }
 
         let table_schema = table.columns();
-        let rows = self.traverse_rows(&table_page.cells);
+        let rows = self.traverse_rows(&table_page);
         let cols: Vec<String> = rows
             .iter()
             .filter_map(|row| self.parse_row(&statement, &table_schema, row))
@@ -195,61 +195,36 @@ impl SqliteReader {
     ) -> Result<()> {
         let index_page = self.page(index.root_page as usize);
         let search_key = &statement.where_clause.as_ref().unwrap().value;
-
-        todo!("parsing index");
+        let mut row_ids = Vec::new();
+        self.search_index(&index_page, &search_key, &mut row_ids);
+        Ok(())
     }
 
-    // FIX: There's a missing row in the tests
-    // Am I even parsing them right...?
-    fn parse_cells_test(&self, page: &BTreePage, search_key: &str) -> Vec<i64> {
-        let mut row_ids = Vec::new();
-        let cells = &page.cells;
-        let right_page_number = page.right_page_pointer();
-
-        for cell in cells.iter() {
-            match cell {
-                DatabaseCell::InteriorIndexCell(index_cell) => {
-                    if search_key <= index_cell.key.as_str() {
-                        let left_page = self.page(index_cell.left_child as usize);
-                        row_ids.extend(self.parse_cells_test(&left_page, search_key));
-                    } else {
-                        let Some(rpn) = right_page_number else {
-                            panic!("expected a right page for index - found nothing");
-                        };
-
-                        let right_page = self.page(rpn as usize);
-                        row_ids.extend(self.parse_cells_test(&right_page, search_key));
-                    }
-                }
-                DatabaseCell::IndexLeafCell(leaf) => {
-                    if leaf.key.as_str() == "zambia" {
-                        dbg!("zambia");
-                    }
-                    if search_key == leaf.key.as_str() {
-                        row_ids.push(leaf.row_id);
-                    }
-                }
-                other => panic!("expected index cell - got {other:#?}"),
-            }
-        }
-
-        row_ids
+    fn search_index(&self, page: &BTreePage, search_key: &str, row_ids: &mut Vec<i64>) {
+        todo!("index parse");
     }
 
     fn traverse_index_rows(&self, page: &BTreePage, id: i64) -> Option<LeafCell> {
         None
     }
 
-    fn traverse_rows(&self, cells: &[DatabaseCell]) -> Vec<LeafCell> {
+    fn traverse_rows(&self, page: &BTreePage) -> Vec<LeafCell> {
         let mut rows = vec![];
+        let cells = &page.cells;
 
         for cell in cells.iter() {
             match cell {
                 DatabaseCell::LeafCell(leaf) => rows.push(leaf.clone()),
                 DatabaseCell::InteriorTableCell(interior_table) => {
                     let page = self.page(interior_table.left_child as usize);
-                    let interior_cells = self.traverse_rows(&page.cells[..]);
+                    let interior_cells = self.traverse_rows(&page);
                     rows.extend(interior_cells);
+
+                    if let Some(rpp) = page.right_page_pointer() {
+                        let right_page = self.page(rpp as usize);
+                        let interior_cells = self.traverse_rows(&right_page);
+                        rows.extend(interior_cells);
+                    }
                 }
                 _ => todo!("traversing rows"),
             }
@@ -281,6 +256,36 @@ impl SqliteReader {
                 None
             }
         }
+    }
+
+    fn index_dump(&self) {
+        let index_cells: Vec<IndexLeafCell> = (0..1910)
+            .into_iter()
+            .flat_map(|page_no| {
+                let page = self.page(page_no);
+                let index_leaves: Vec<IndexLeafCell> = page
+                    .cells
+                    .into_iter()
+                    .filter_map(|cell| {
+                        if let DatabaseCell::IndexLeafCell(leaf) = cell {
+                            return Some(leaf.clone());
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                index_leaves
+            })
+            .collect();
+
+        let mut row_ids: Vec<i64> = index_cells.into_iter().map(|idx| idx.row_id).collect();
+        row_ids.sort();
+        let mut s = String::new();
+        for id in row_ids.iter() {
+            write!(s, "{id}\n").unwrap();
+        }
+        print!("{s}");
     }
 }
 

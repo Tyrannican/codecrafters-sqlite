@@ -15,6 +15,17 @@ pub enum BTreePageType {
     LeafTable = 13,
 }
 
+impl std::fmt::Display for BTreePageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InteriorIndex => write!(f, "Interior Index Page"),
+            Self::InteriorTable => write!(f, "Interior Table Page"),
+            Self::LeafIndex => write!(f, "Index Leaf Page"),
+            Self::LeafTable => write!(f, "Table Leaf Page"),
+        }
+    }
+}
+
 impl From<u8> for BTreePageType {
     fn from(value: u8) -> Self {
         match value {
@@ -70,7 +81,8 @@ impl BTreePage {
             fragmented_free_bytes: header_bytes.get_u8(),
             rightmost_pointer: match page_type {
                 BTreePageType::InteriorTable | BTreePageType::InteriorIndex => {
-                    Some(header_bytes.get_u32())
+                    let page_number = header_bytes.get_u32();
+                    Some(page_number - 1)
                 }
                 _ => None,
             },
@@ -90,18 +102,17 @@ impl BTreePage {
                     offset
                 };
 
+                let cell_buf = &buf[offset..];
                 match page_type {
-                    BTreePageType::LeafTable => {
-                        DatabaseCell::LeafCell(LeafCell::new(&buf[offset..]))
-                    }
+                    BTreePageType::LeafTable => DatabaseCell::LeafCell(LeafCell::new(cell_buf)),
                     BTreePageType::InteriorTable => {
-                        DatabaseCell::InteriorTableCell(InteriorTableCell::new(&buf[offset..]))
+                        DatabaseCell::InteriorTableCell(InteriorTableCell::new(cell_buf))
                     }
                     BTreePageType::InteriorIndex => {
-                        DatabaseCell::InteriorIndexCell(InteriorIndexCell::new(&buf[offset..]))
+                        DatabaseCell::InteriorIndexCell(InteriorIndexCell::new(cell_buf))
                     }
                     BTreePageType::LeafIndex => {
-                        DatabaseCell::IndexLeafCell(IndexLeafCell::new(&buf[offset..]))
+                        DatabaseCell::IndexLeafCell(IndexLeafCell::new(cell_buf))
                     }
                 }
             })
@@ -112,6 +123,10 @@ impl BTreePage {
             page_no,
             cells,
         }
+    }
+
+    pub fn page_type(&self) -> BTreePageType {
+        self.header.page_type
     }
 
     pub fn right_page_pointer(&self) -> Option<u32> {

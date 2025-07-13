@@ -121,30 +121,30 @@ pub struct InteriorIndexCell {
 impl InteriorIndexCell {
     pub fn new(mut buf: &[u8]) -> Self {
         let left_child = buf.get_u32();
-        let (_, consumed) = parse_varint(buf);
+        let (payload_size, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
+        buf = &buf[..payload_size as usize];
         let (header_size, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
         let mut serial_types = Vec::new();
-        let mut remaining_header_bytes = header_size as usize - consumed;
-        while remaining_header_bytes > 0 {
+        let mut remaining_bytes = header_size as usize - consumed;
+        while remaining_bytes > 0 {
             let (value, consumed) = parse_varint(buf);
             buf.advance(consumed);
-            remaining_header_bytes -= consumed;
+            remaining_bytes -= consumed;
             serial_types.push(RecordSerialType::from(value));
         }
 
         let payload_values = serial_types_to_record_values(&serial_types, buf);
-
         let RecordValue::String(key) = &payload_values[0] else {
-            panic!("only supporting string index keys");
+            panic!("unsupported index type - {}", &payload_values[0]);
         };
 
         Self {
             left_child: left_child - 1,
-            key: key.to_string(),
+            key: key.to_owned(),
         }
     }
 }
@@ -157,25 +157,29 @@ pub struct IndexLeafCell {
 
 impl IndexLeafCell {
     pub fn new(mut buf: &[u8]) -> Self {
-        let (_, consumed) = parse_varint(buf);
+        let (payload_size, consumed) = parse_varint(buf);
         buf.advance(consumed);
+        buf = &buf[..payload_size as usize];
 
         let (header_size, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
         let mut serial_types = Vec::new();
-        let mut remaining_header_bytes = header_size as usize - consumed;
-        while remaining_header_bytes > 0 {
+        let mut remaining_bytes = header_size as usize - consumed;
+        while remaining_bytes > 0 {
             let (value, consumed) = parse_varint(buf);
             buf.advance(consumed);
-            remaining_header_bytes -= consumed;
+            remaining_bytes -= consumed;
             serial_types.push(RecordSerialType::from(value));
         }
 
         let payload_values = serial_types_to_record_values(&serial_types, buf);
 
         let RecordValue::String(key) = &payload_values[0] else {
-            panic!("only supporting string index keys");
+            panic!(
+                "unexpected serial type in index leaf cell - {}",
+                &payload_values[0]
+            );
         };
 
         let row_id = match &payload_values[1] {
@@ -270,7 +274,7 @@ fn serial_types_to_record_values(
     serial_types: &[RecordSerialType],
     mut buf: &[u8],
 ) -> Vec<RecordValue> {
-    serial_types
+    let values = serial_types
         .iter()
         .map(|st| match *st {
             RecordSerialType::Null => RecordValue::Null,
@@ -278,7 +282,7 @@ fn serial_types_to_record_values(
             RecordSerialType::I16 => RecordValue::I16(buf.get_i16()),
             RecordSerialType::I24 => {
                 let buf: [u8; 3] = [buf.get_u8(), buf.get_u8(), buf.get_u8()];
-                let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
+                let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0x00 };
                 let bytes = [sign, buf[0], buf[1], buf[2]];
                 RecordValue::I24(i32::from_be_bytes(bytes))
             }
@@ -292,7 +296,7 @@ fn serial_types_to_record_values(
                     buf.get_u8(),
                     buf.get_u8(),
                 ];
-                let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0 };
+                let sign = if buf[0] & 0x80 != 0 { 0xFF } else { 0x00 };
                 let bytes = [sign, sign, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5]];
                 RecordValue::I48(i64::from_be_bytes(bytes))
             }
@@ -310,5 +314,9 @@ fn serial_types_to_record_values(
             }
             _ => todo!("deal with internal"),
         })
-        .collect::<Vec<RecordValue>>()
+        .collect::<Vec<RecordValue>>();
+
+    assert!(buf.remaining() == 0);
+
+    values
 }
