@@ -305,7 +305,8 @@ fn serial_types_to_record_values(
             RecordSerialType::False => RecordValue::Bool(false),
             RecordSerialType::True => RecordValue::Bool(true),
             RecordSerialType::Blob(size) => {
-                let blob = (0..size).into_iter().map(|_| buf.get_u8()).collect();
+                let mut blob = vec![0u8; size];
+                buf.copy_to_slice(&mut blob);
                 RecordValue::Blob(blob)
             }
             RecordSerialType::String(size) => {
