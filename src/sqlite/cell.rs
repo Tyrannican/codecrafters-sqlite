@@ -15,7 +15,7 @@ pub enum DatabaseCell {
 
 #[derive(Debug, Clone)]
 pub(crate) struct LeafCell {
-    pub row_id: i64,
+    pub row_id: u64,
     serial_types: Vec<RecordSerialType>,
     pub payload: Vec<RecordValue>,
     overflow_page: Option<u32>,
@@ -95,7 +95,7 @@ impl LeafCell {
 
 #[derive(Debug, Clone)]
 pub struct InteriorTableCell {
-    pub row_id: i64,
+    pub row_id: u64,
     pub left_child: u32,
 }
 
@@ -116,6 +116,7 @@ impl InteriorTableCell {
 pub struct InteriorIndexCell {
     pub left_child: u32,
     pub key: String,
+    pub row_id: u64,
 }
 
 impl InteriorIndexCell {
@@ -124,57 +125,23 @@ impl InteriorIndexCell {
         let (payload_size, consumed) = parse_varint(buf);
         buf.advance(consumed);
 
-        buf = &buf[..payload_size as usize];
-        let (header_size, consumed) = parse_varint(buf);
-        buf.advance(consumed);
+        let mut payload = &buf[..payload_size as usize];
+        // dbg!(buf.len(), payload.len(), payload_size, buf);
+        let (record_header_size, consumed) = parse_varint(payload);
+        payload.advance(consumed);
 
-        let mut serial_types = Vec::new();
-        let mut remaining_bytes = header_size as usize - consumed;
-        while remaining_bytes > 0 {
-            let (value, consumed) = parse_varint(buf);
-            buf.advance(consumed);
-            remaining_bytes -= consumed;
+        let record_offset = record_header_size as usize - consumed;
+        let mut serial_type_bytes = &payload[..record_offset];
+        let record_values_bytes = &payload[record_offset..];
+
+        let mut serial_types = vec![];
+        while serial_type_bytes.remaining() > 0 {
+            let (value, consumed) = parse_varint(serial_type_bytes);
+            serial_type_bytes.advance(consumed);
             serial_types.push(RecordSerialType::from(value));
         }
 
-        let payload_values = serial_types_to_record_values(&serial_types, buf);
-        let RecordValue::String(key) = &payload_values[0] else {
-            panic!("unsupported index type - {}", &payload_values[0]);
-        };
-
-        Self {
-            left_child: left_child - 1,
-            key: key.to_owned(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct IndexLeafCell {
-    pub key: String,
-    pub row_id: i64,
-}
-
-impl IndexLeafCell {
-    pub fn new(mut buf: &[u8]) -> Self {
-        let (payload_size, consumed) = parse_varint(buf);
-        buf.advance(consumed);
-        buf = &buf[..payload_size as usize];
-
-        let (header_size, consumed) = parse_varint(buf);
-        buf.advance(consumed);
-
-        let mut serial_types = Vec::new();
-        let mut remaining_bytes = header_size as usize - consumed;
-        while remaining_bytes > 0 {
-            let (value, consumed) = parse_varint(buf);
-            buf.advance(consumed);
-            remaining_bytes -= consumed;
-            serial_types.push(RecordSerialType::from(value));
-        }
-
-        let payload_values = serial_types_to_record_values(&serial_types, buf);
-
+        let payload_values = serial_types_to_record_values(&serial_types, record_values_bytes);
         let RecordValue::String(key) = &payload_values[0] else {
             panic!(
                 "unexpected serial type in index leaf cell - {}",
@@ -183,18 +150,70 @@ impl IndexLeafCell {
         };
 
         let row_id = match &payload_values[1] {
-            RecordValue::I8(value) => *value as i64,
-            RecordValue::I16(value) => *value as i64,
-            RecordValue::I24(value) => *value as i64,
-            RecordValue::I32(value) => *value as i64,
-            RecordValue::I48(value) => *value as i64,
-            RecordValue::I64(value) => *value,
+            RecordValue::I8(value) => *value as u64,
+            RecordValue::I16(value) => *value as u64,
+            RecordValue::I24(value) => *value as u64,
+            RecordValue::I32(value) => *value as u64,
+            RecordValue::I48(value) => *value as u64,
+            RecordValue::I64(value) => *value as u64,
             _ => panic!("only supporting numeric ids"),
         };
 
         Self {
-            key: key.to_string(),
+            left_child: left_child - 1,
+            key: key.to_owned(),
             row_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexLeafCell {
+    pub key: String,
+    pub row_id: u64,
+}
+
+impl IndexLeafCell {
+    pub fn new(mut buf: &[u8]) -> Self {
+        let (payload_size, consumed) = parse_varint(buf);
+        buf.advance(consumed);
+
+        let mut payload = &buf[..payload_size as usize];
+        let (record_header_size, consumed) = parse_varint(payload);
+        payload.advance(consumed);
+
+        let record_offset = record_header_size as usize - consumed;
+        let mut serial_type_bytes = &payload[..record_offset];
+        let record_values_bytes = &payload[record_offset..];
+
+        let mut serial_types = vec![];
+        while serial_type_bytes.remaining() > 0 {
+            let (value, consumed) = parse_varint(serial_type_bytes);
+            serial_type_bytes.advance(consumed);
+            serial_types.push(RecordSerialType::from(value));
+        }
+
+        let payload_values = serial_types_to_record_values(&serial_types, record_values_bytes);
+        let RecordValue::String(key) = &payload_values[0] else {
+            panic!(
+                "unexpected serial type in index leaf cell - {}",
+                &payload_values[0]
+            );
+        };
+
+        let row_id = match &payload_values[1] {
+            RecordValue::I8(value) => *value as u64,
+            RecordValue::I16(value) => *value as u64,
+            RecordValue::I24(value) => *value as u64,
+            RecordValue::I32(value) => *value as u64,
+            RecordValue::I48(value) => *value as u64,
+            RecordValue::I64(value) => *value as u64,
+            _ => panic!("only supporting numeric ids"),
+        };
+
+        Self {
+            row_id,
+            key: key.to_owned(),
         }
     }
 }
@@ -249,8 +268,8 @@ enum RecordSerialType {
     Internal,
 }
 
-impl From<i64> for RecordSerialType {
-    fn from(value: i64) -> Self {
+impl From<u64> for RecordSerialType {
+    fn from(value: u64) -> Self {
         match value {
             0 => Self::Null,
             1 => Self::I8,

@@ -45,7 +45,7 @@ pub struct SchemaTable {
     sqlite_type: String,
     pub name: String,
     pub table_name: String,
-    pub root_page: i8,
+    pub root_page: u64,
     pub sql: String,
 }
 
@@ -66,8 +66,14 @@ impl SchemaTable {
                     panic!("expected a string(table_name)");
                 };
 
-                let RecordValue::I8(root_page) = &inner.payload[3] else {
-                    panic!("expected a integer(root_page)");
+                let root_page = match &inner.payload[3] {
+                    RecordValue::I8(value) => *value as u64,
+                    RecordValue::I16(value) => *value as u64,
+                    RecordValue::I24(value) => *value as u64,
+                    RecordValue::I32(value) => *value as u64,
+                    RecordValue::I48(value) => *value as u64,
+                    RecordValue::I64(value) => *value as u64,
+                    other => panic!("expected an integer(root_page) - found {other:#?}"),
                 };
 
                 let RecordValue::String(sql) = &inner.payload[4] else {
@@ -78,7 +84,7 @@ impl SchemaTable {
                     sqlite_type: sqlite_type.clone(),
                     name: name.clone(),
                     table_name: table_name.clone(),
-                    root_page: *root_page - 1,
+                    root_page: root_page - 1,
                     sql: sql.clone(),
                 };
             }
