@@ -204,6 +204,7 @@ impl SqliteReader {
         dbg!("traversing index rows");
         for id in row_ids {
             self.traverse_indexed_rows(&table_page, id, &mut target_rows);
+            break;
         }
 
         let table_schema = table.columns();
@@ -263,100 +264,16 @@ impl SqliteReader {
     }
 
     fn traverse_indexed_rows(&self, page: &BTreePage, id: u64, target_rows: &mut Vec<LeafCell>) {
+        let cells = &page.cells;
         match page.page_type() {
             BTreePageType::InteriorTable => {
-                let mut traversed_left = false;
-                for cell in page.cells.iter() {
-                    let DatabaseCell::InteriorTableCell(table_cell) = cell else {
-                        panic!("expected interior table cell - found {cell:#?}");
-                    };
-
-                    if id <= table_cell.row_id {
-                        let left_page = self.page(table_cell.left_child as usize);
-                        self.traverse_indexed_rows(&left_page, id, target_rows);
-                        traversed_left = true;
-                    }
-                }
-
-                if !traversed_left {
-                    let Some(rp) = page.right_page_pointer() else {
-                        panic!("expected right page pointer for interior table cell - found none");
-                    };
-
-                    let right_page = self.page(rp as usize);
-                    self.traverse_indexed_rows(&right_page, id, target_rows);
-                }
+                // TODO: Binary Search
             }
             BTreePageType::LeafTable => {
-                let cells = &page.cells;
-                let mut left = 0;
-                let mut right = cells.len();
-
-                while left < right {
-                    let mid = left + (right - left) / 2;
-                    let DatabaseCell::LeafCell(leaf) = &cells[mid] else {
-                        panic!("expected table leaf cell - found {:#?}", &cells[mid]);
-                    };
-
-                    match leaf.row_id.cmp(&id) {
-                        std::cmp::Ordering::Equal => {
-                            let mut check_left = mid;
-                            target_rows.push(leaf.clone());
-
-                            while check_left > 0 {
-                                check_left -= 1;
-                                let DatabaseCell::LeafCell(left_leaf) = &cells[check_left] else {
-                                    break;
-                                };
-
-                                if left_leaf.row_id == id {
-                                    target_rows.push(left_leaf.clone());
-                                } else {
-                                    break;
-                                }
-                            }
-
-                            let mut check_right = mid + 1;
-                            while check_right < cells.len() {
-                                let DatabaseCell::LeafCell(right_leaf) = &cells[check_right] else {
-                                    break;
-                                };
-
-                                if right_leaf.row_id == id {
-                                    target_rows.push(right_leaf.clone());
-                                    check_right += 1;
-                                } else {
-                                    break;
-                                }
-                            }
-                            return;
-                        }
-                        std::cmp::Ordering::Less => left = mid + 1,
-                        std::cmp::Ordering::Greater => right = mid,
-                    }
-                }
+                // TODO: Binary Search
             }
-            other => panic!("expected table or leaf cell - found {other:#?}"),
+            other => panic!("expected table page - found {other:#?}"),
         }
-        // for cell in page.cells.iter() {
-        //     match cell {
-        //         DatabaseCell::InteriorTableCell(table_cell) => {
-        //             let left_page = self.page(table_cell.left_child as usize);
-        //             self.traverse_indexed_rows(&left_page, id, target_rows);
-        //         }
-        //         DatabaseCell::LeafCell(leaf) => {
-        //             if id.contains(&leaf.row_id) {
-        //                 target_rows.push(leaf.clone());
-        //             }
-        //         }
-        //         _ => panic!(),
-        //     }
-        // }
-
-        // if let Some(rp) = page.right_page_pointer() {
-        //     let right_page = self.page(rp as usize);
-        //     self.traverse_indexed_rows(&right_page, id, target_rows);
-        // }
     }
 
     // FIX: Rework this to be cleaner
