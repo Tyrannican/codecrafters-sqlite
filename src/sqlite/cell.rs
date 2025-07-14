@@ -142,11 +142,10 @@ impl InteriorIndexCell {
         }
 
         let payload_values = serial_types_to_record_values(&serial_types, record_values_bytes);
-        let RecordValue::String(key) = &payload_values[0] else {
-            panic!(
-                "unexpected serial type in index leaf cell - {}",
-                &payload_values[0]
-            );
+        let key = match &payload_values[0] {
+            RecordValue::String(key) => key.to_owned(),
+            RecordValue::Null => "".to_string(),
+            other => panic!("iic - expected string or null for payload -> found {other:#?}"),
         };
 
         let row_id = match &payload_values[1] {
@@ -156,12 +155,19 @@ impl InteriorIndexCell {
             RecordValue::I32(value) => *value as u64,
             RecordValue::I48(value) => *value as u64,
             RecordValue::I64(value) => *value as u64,
-            _ => panic!("only supporting numeric ids"),
+            RecordValue::Bool(value) => {
+                if *value {
+                    1u64
+                } else {
+                    0u64
+                }
+            }
+            other => panic!("only supporting numeric ids - {other:#?}"),
         };
 
         Self {
             left_child: left_child - 1,
-            key: key.to_owned(),
+            key,
             row_id,
         }
     }
@@ -208,7 +214,14 @@ impl IndexLeafCell {
             RecordValue::I32(value) => *value as u64,
             RecordValue::I48(value) => *value as u64,
             RecordValue::I64(value) => *value as u64,
-            _ => panic!("only supporting numeric ids"),
+            RecordValue::Bool(value) => {
+                if *value {
+                    1u64
+                } else {
+                    0u64
+                }
+            }
+            other => panic!("only supporting numeric ids - {other:#?}"),
         };
 
         Self {

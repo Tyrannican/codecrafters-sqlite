@@ -3,7 +3,7 @@ use cell::{DatabaseCell, IndexLeafCell, InteriorTableCell, LeafCell, RecordValue
 use memmap2::Mmap;
 use schema::{SchemaTable, SqliteSchema};
 use sql::{CreateTable, SelectStatement};
-use std::{fmt::Write, fs::File, hash::Hash, path::Path};
+use std::{collections::HashSet, fmt::Write, fs::File, hash::Hash, path::Path};
 
 use bytes::{Buf, Bytes};
 
@@ -261,31 +261,62 @@ impl SqliteReader {
     }
 
     fn traverse_indexed_rows(&self, page: &BTreePage, id: u64, target_rows: &mut Vec<LeafCell>) {
-        let mut recursed_left = false;
-        for cell in page.cells.iter() {
-            match cell {
-                DatabaseCell::InteriorTableCell(table_cell) => {
+        match page.page_type() {
+            BTreePageType::InteriorTable => {
+                let mut traversed_left = false;
+                for cell in page.cells.iter() {
+                    let DatabaseCell::InteriorTableCell(table_cell) = cell else {
+                        panic!("expected interior table cell - found {cell:#?}");
+                    };
+
                     if id <= table_cell.row_id {
                         let left_page = self.page(table_cell.left_child as usize);
                         self.traverse_indexed_rows(&left_page, id, target_rows);
-                        recursed_left = true;
+                        traversed_left = true;
                     }
                 }
-                DatabaseCell::LeafCell(leaf) => {
-                    if id == leaf.row_id {
+
+                if !traversed_left {
+                    let Some(rp) = page.right_page_pointer() else {
+                        panic!("expected right page pointer for interior table cell - found none");
+                    };
+
+                    let right_page = self.page(rp as usize);
+                    self.traverse_indexed_rows(&right_page, id, target_rows);
+                }
+            }
+            BTreePageType::LeafTable => {
+                for cell in page.cells.iter() {
+                    let DatabaseCell::LeafCell(leaf) = cell else {
+                        panic!("expected table leaf cell - found {cell:#?}");
+                    };
+
+                    if leaf.row_id == id {
                         target_rows.push(leaf.clone());
                     }
                 }
-                _ => panic!(),
             }
+            other => panic!("expected table or leaf cell - found {other:#?}"),
         }
+        // for cell in page.cells.iter() {
+        //     match cell {
+        //         DatabaseCell::InteriorTableCell(table_cell) => {
+        //             let left_page = self.page(table_cell.left_child as usize);
+        //             self.traverse_indexed_rows(&left_page, id, target_rows);
+        //         }
+        //         DatabaseCell::LeafCell(leaf) => {
+        //             if id.contains(&leaf.row_id) {
+        //                 target_rows.push(leaf.clone());
+        //             }
+        //         }
+        //         _ => panic!(),
+        //     }
+        // }
 
-        if !recursed_left {
-            if let Some(rp) = page.right_page_pointer() {
-                let right_page = self.page(rp as usize);
-                self.traverse_indexed_rows(&right_page, id, target_rows);
-            }
-        }
+        // if let Some(rp) = page.right_page_pointer() {
+        //     let right_page = self.page(rp as usize);
+        //     self.traverse_indexed_rows(&right_page, id, target_rows);
+        // }
     }
 
     // FIX: Rework this to be cleaner
