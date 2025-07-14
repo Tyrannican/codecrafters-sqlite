@@ -196,10 +196,12 @@ impl SqliteReader {
         let index_page = self.page(index.root_page as usize);
         let mut row_ids = Vec::new();
         let search_key = &statement.where_clause.as_ref().unwrap().value;
+        dbg!("searching index");
         self.search_index(&index_page, &search_key, &mut row_ids);
 
         let mut target_rows = Vec::new();
         let table_page = self.page(table.root_page as usize);
+        dbg!("traversing index rows");
         for id in row_ids {
             self.traverse_indexed_rows(&table_page, id, &mut target_rows);
         }
@@ -286,13 +288,51 @@ impl SqliteReader {
                 }
             }
             BTreePageType::LeafTable => {
-                for cell in page.cells.iter() {
-                    let DatabaseCell::LeafCell(leaf) = cell else {
-                        panic!("expected table leaf cell - found {cell:#?}");
+                let cells = &page.cells;
+                let mut left = 0;
+                let mut right = cells.len();
+
+                while left < right {
+                    let mid = left + (right - left) / 2;
+                    let DatabaseCell::LeafCell(leaf) = &cells[mid] else {
+                        panic!("expected table leaf cell - found {:#?}", &cells[mid]);
                     };
 
-                    if leaf.row_id == id {
-                        target_rows.push(leaf.clone());
+                    match leaf.row_id.cmp(&id) {
+                        std::cmp::Ordering::Equal => {
+                            let mut check_left = mid;
+                            target_rows.push(leaf.clone());
+
+                            while check_left > 0 {
+                                check_left -= 1;
+                                let DatabaseCell::LeafCell(left_leaf) = &cells[check_left] else {
+                                    break;
+                                };
+
+                                if left_leaf.row_id == id {
+                                    target_rows.push(left_leaf.clone());
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            let mut check_right = mid + 1;
+                            while check_right < cells.len() {
+                                let DatabaseCell::LeafCell(right_leaf) = &cells[check_right] else {
+                                    break;
+                                };
+
+                                if right_leaf.row_id == id {
+                                    target_rows.push(right_leaf.clone());
+                                    check_right += 1;
+                                } else {
+                                    break;
+                                }
+                            }
+                            return;
+                        }
+                        std::cmp::Ordering::Less => left = mid + 1,
+                        std::cmp::Ordering::Greater => right = mid,
                     }
                 }
             }
