@@ -1,6 +1,7 @@
 use anyhow::Result;
 use cell::{DatabaseCell, IndexLeafCell, InteriorTableCell, LeafCell, RecordValue};
 use memmap2::Mmap;
+use nom::character::complete::tab;
 use schema::{SchemaTable, SqliteSchema};
 use sql::{CreateTable, SelectStatement};
 use std::{collections::HashSet, fmt::Write, fs::File, hash::Hash, path::Path};
@@ -204,7 +205,6 @@ impl SqliteReader {
         dbg!("traversing index rows");
         for id in row_ids {
             self.traverse_indexed_rows(&table_page, id, &mut target_rows);
-            break;
         }
 
         let table_schema = table.columns();
@@ -265,12 +265,30 @@ impl SqliteReader {
 
     fn traverse_indexed_rows(&self, page: &BTreePage, id: u64, target_rows: &mut Vec<LeafCell>) {
         let cells = &page.cells;
+        let last_idx = cells.len() - 1;
         match page.page_type() {
             BTreePageType::InteriorTable => {
-                // TODO: Binary Search
+                // TODO: Manual binary search
             }
             BTreePageType::LeafTable => {
-                // TODO: Binary Search
+                let idx = match cells.binary_search_by(|cell| {
+                    let DatabaseCell::LeafCell(leaf) = cell else {
+                        panic!("expected leaf cell - found {cell:#?}");
+                    };
+
+                    leaf.row_id.cmp(&id)
+                }) {
+                    Ok(idx) => idx,
+                    Err(_) => return,
+                };
+
+                let DatabaseCell::LeafCell(leaf) = &cells[idx] else {
+                    panic!("expected leaf cell - found {:#?}", &cells[idx]);
+                };
+
+                if id == leaf.row_id {
+                    target_rows.push(leaf.clone());
+                }
             }
             other => panic!("expected table page - found {other:#?}"),
         }
