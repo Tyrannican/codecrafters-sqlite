@@ -1,10 +1,9 @@
 use anyhow::Result;
-use cell::{DatabaseCell, IndexLeafCell, InteriorTableCell, LeafCell, RecordValue};
+use cell::{DatabaseCell, LeafCell};
 use memmap2::Mmap;
-use nom::character::complete::tab;
 use schema::{SchemaTable, SqliteSchema};
 use sql::{CreateTable, SelectStatement};
-use std::{collections::HashSet, fmt::Write, fs::File, hash::Hash, path::Path};
+use std::{fmt::Write, fs::File, path::Path};
 
 use bytes::{Buf, Bytes};
 
@@ -17,6 +16,7 @@ use page::{BTreePage, BTreePageType};
 
 const HEADER_SIZE: usize = 100;
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone)]
 pub struct DatabaseHeader {
     magic: [u8; 16],
@@ -151,7 +151,7 @@ impl SqliteReader {
     // Only supporting select statements for now
     pub fn query(&self, query: &str) -> Result<()> {
         let schema = self.schema();
-        let (_, statement) = sql::select_statement(&query).unwrap();
+        let (_, statement) = sql::select_statement(query).unwrap();
 
         let Some(table) = schema.fetch_table(&statement.table) else {
             eprintln!("error: no such table '{}'", statement.table);
@@ -178,7 +178,7 @@ impl SqliteReader {
         let rows = self.traverse_rows(&table_page);
         let cols: Vec<String> = rows
             .iter()
-            .filter_map(|row| self.parse_row(&statement, &table_schema, row))
+            .filter_map(|row| self.parse_row(statement, &table_schema, row))
             .collect();
 
         for result in cols {
@@ -197,7 +197,7 @@ impl SqliteReader {
         let index_page = self.page(index.root_page as usize);
         let mut row_ids = Vec::new();
         let search_key = &statement.where_clause.as_ref().unwrap().value;
-        self.search_index(&index_page, &search_key, &mut row_ids);
+        self.search_index(&index_page, search_key, &mut row_ids);
 
         let mut target_rows = Vec::new();
         let table_page = self.page(table.root_page as usize);
@@ -208,7 +208,7 @@ impl SqliteReader {
         let table_schema = table.columns();
         let cols: Vec<String> = target_rows
             .iter()
-            .filter_map(|row| self.parse_row(&statement, &table_schema, row))
+            .filter_map(|row| self.parse_row(statement, &table_schema, row))
             .collect();
 
         for result in cols {
@@ -222,7 +222,7 @@ impl SqliteReader {
             BTreePageType::InteriorIndex => {
                 let mut recursed_left = false;
                 for cell in page.cells.iter() {
-                    let DatabaseCell::InteriorIndexCell(index_cell) = cell else {
+                    let DatabaseCell::InteriorIndex(index_cell) = cell else {
                         panic!("expected an interior index cell - found {cell:#?}");
                     };
 
@@ -248,7 +248,7 @@ impl SqliteReader {
             }
             BTreePageType::LeafIndex => {
                 for cell in page.cells.iter() {
-                    let DatabaseCell::IndexLeafCell(leaf) = cell else {
+                    let DatabaseCell::IndexLeaf(leaf) = cell else {
                         panic!("expected index leaf cell - found {cell:#?}");
                     };
 
@@ -268,7 +268,7 @@ impl SqliteReader {
             BTreePageType::InteriorTable => {
                 let mut idx = 0;
                 while idx < cells.len() {
-                    let DatabaseCell::InteriorTableCell(table_cell) = &cells[idx] else {
+                    let DatabaseCell::InteriorTable(table_cell) = &cells[idx] else {
                         panic!("expected interior table cell - found {:#?}", &cells[idx]);
                     };
 
@@ -285,11 +285,11 @@ impl SqliteReader {
                 };
 
                 let right_page = self.page(rp as usize);
-                return self.traverse_indexed_rows(&right_page, id, target_rows);
+                self.traverse_indexed_rows(&right_page, id, target_rows)
             }
             BTreePageType::LeafTable => {
                 let idx = match cells.binary_search_by(|cell| {
-                    let DatabaseCell::LeafCell(leaf) = cell else {
+                    let DatabaseCell::Leaf(leaf) = cell else {
                         panic!("expected leaf cell - found {cell:#?}");
                     };
 
@@ -299,7 +299,7 @@ impl SqliteReader {
                     Err(_) => return,
                 };
 
-                let DatabaseCell::LeafCell(leaf) = &cells[idx] else {
+                let DatabaseCell::Leaf(leaf) = &cells[idx] else {
                     panic!("expected leaf cell - found {:#?}", &cells[idx]);
                 };
 
@@ -318,8 +318,8 @@ impl SqliteReader {
 
         for cell in cells.iter() {
             match cell {
-                DatabaseCell::LeafCell(leaf) => rows.push(leaf.clone()),
-                DatabaseCell::InteriorTableCell(interior_table) => {
+                DatabaseCell::Leaf(leaf) => rows.push(leaf.clone()),
+                DatabaseCell::InteriorTable(interior_table) => {
                     let page = self.page(interior_table.left_child as usize);
                     let interior_cells = self.traverse_rows(&page);
                     rows.extend(interior_cells);
@@ -360,36 +360,6 @@ impl SqliteReader {
                 None
             }
         }
-    }
-
-    fn index_dump(&self) {
-        let index_cells: Vec<IndexLeafCell> = (0..1910)
-            .into_iter()
-            .flat_map(|page_no| {
-                let page = self.page(page_no);
-                let index_leaves: Vec<IndexLeafCell> = page
-                    .cells
-                    .into_iter()
-                    .filter_map(|cell| {
-                        if let DatabaseCell::IndexLeafCell(leaf) = cell {
-                            return Some(leaf.clone());
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-
-                index_leaves
-            })
-            .collect();
-
-        let mut row_ids: Vec<u64> = index_cells.into_iter().map(|idx| idx.row_id).collect();
-        row_ids.sort();
-        let mut s = String::new();
-        for id in row_ids.iter() {
-            write!(s, "{id}\n").unwrap();
-        }
-        print!("{s}");
     }
 }
 

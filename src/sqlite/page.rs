@@ -38,6 +38,7 @@ impl From<u8> for BTreePageType {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct BTreePageHeader {
     pub page_type: BTreePageType,
@@ -48,6 +49,7 @@ pub struct BTreePageHeader {
     pub rightmost_pointer: Option<u32>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct BTreePage {
     page_no: usize,
@@ -93,7 +95,6 @@ impl BTreePage {
             &buf[header_offset..header_offset + (2 * usize::from(header.total_cells))];
 
         let cells: Vec<DatabaseCell> = (0..total_cells)
-            .into_iter()
             .map(|_| {
                 let offset = usize::from(cell_pointer_buf.get_u16());
                 let offset = if page_no == 0 {
@@ -104,15 +105,15 @@ impl BTreePage {
 
                 let cell_buf = &buf[offset..];
                 match page_type {
-                    BTreePageType::LeafTable => DatabaseCell::LeafCell(LeafCell::new(cell_buf)),
+                    BTreePageType::LeafTable => DatabaseCell::Leaf(LeafCell::new(cell_buf)),
                     BTreePageType::InteriorTable => {
-                        DatabaseCell::InteriorTableCell(InteriorTableCell::new(cell_buf))
+                        DatabaseCell::InteriorTable(InteriorTableCell::new(cell_buf))
                     }
                     BTreePageType::InteriorIndex => {
-                        DatabaseCell::InteriorIndexCell(InteriorIndexCell::new(cell_buf))
+                        DatabaseCell::InteriorIndex(InteriorIndexCell::new(cell_buf))
                     }
                     BTreePageType::LeafIndex => {
-                        DatabaseCell::IndexLeafCell(IndexLeafCell::new(cell_buf))
+                        DatabaseCell::IndexLeaf(IndexLeafCell::new(cell_buf))
                     }
                 }
             })
@@ -131,11 +132,6 @@ impl BTreePage {
 
     pub fn right_page_pointer(&self) -> Option<u32> {
         self.header.rightmost_pointer
-    }
-
-    pub fn fetch_row(&self, row: usize) -> &DatabaseCell {
-        assert!(row < self.cells.len());
-        &self.cells[row]
     }
 
     pub fn count(&self) -> usize {

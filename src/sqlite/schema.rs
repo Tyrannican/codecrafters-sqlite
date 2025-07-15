@@ -1,6 +1,6 @@
 use super::cell::{DatabaseCell, RecordValue};
 use super::page::{BTreePage, BTreePageType};
-use super::sql::{self, CreateIndex, CreateStatement, CreateTable};
+use super::sql::{self, CreateStatement, CreateTable};
 use std::collections::BTreeMap;
 
 #[derive(Debug)]
@@ -22,13 +22,9 @@ impl SqliteSchema {
     }
 
     pub fn fetch_index(&self, table: &str) -> Option<&SchemaTable> {
-        for value in self.tables.values() {
-            if value.table_name == table && &value.sqlite_type == "index" {
-                return Some(value);
-            }
-        }
-
-        None
+        self.tables
+            .values()
+            .find(|&value| value.table_name == table && &value.sqlite_type == "index")
     }
 
     pub fn fetch_table(&self, table: &str) -> Option<&SchemaTable> {
@@ -52,7 +48,7 @@ pub struct SchemaTable {
 impl SchemaTable {
     pub fn new(cell: &DatabaseCell) -> Self {
         match cell {
-            DatabaseCell::LeafCell(inner) => {
+            DatabaseCell::Leaf(inner) => {
                 assert!(inner.payload.len() == 5);
                 let RecordValue::String(sqlite_type) = &inner.payload[0] else {
                     panic!("expected a string(sqlite_type)");
@@ -80,33 +76,24 @@ impl SchemaTable {
                     panic!("exptected a string(sql)");
                 };
 
-                return Self {
+                Self {
                     sqlite_type: sqlite_type.clone(),
                     name: name.clone(),
                     table_name: table_name.clone(),
                     root_page: root_page - 1,
                     sql: sql.clone(),
-                };
+                }
             }
             _ => todo!(),
-        }
-    }
-
-    pub fn indexes(&self) -> CreateIndex {
-        let (_, create_statement) =
-            sql::create_statement(&self.sql).expect("should parse create statement");
-        match create_statement {
-            CreateStatement::Index(i) => i,
-            _ => panic!("expected index, found something else"),
         }
     }
 
     pub fn columns(&self) -> CreateTable {
         let (_, create_statement) =
             sql::create_statement(&self.sql).expect("should parse create statement");
+
         match create_statement {
             CreateStatement::Table(t) => t,
-            _ => panic!("expected table, found something else"),
         }
     }
 }

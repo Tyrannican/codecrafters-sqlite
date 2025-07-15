@@ -7,12 +7,13 @@ use std::fmt::Write;
 
 #[derive(Debug, Clone)]
 pub enum DatabaseCell {
-    LeafCell(LeafCell),
-    IndexLeafCell(IndexLeafCell),
-    InteriorTableCell(InteriorTableCell),
-    InteriorIndexCell(InteriorIndexCell),
+    Leaf(LeafCell),
+    IndexLeaf(IndexLeafCell),
+    InteriorTable(InteriorTableCell),
+    InteriorIndex(InteriorIndexCell),
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub(crate) struct LeafCell {
     pub row_id: u64,
@@ -62,7 +63,7 @@ impl LeafCell {
         let mut output = String::new();
         let mut iter = search_cols.iter().peekable();
         if let Some(ref cond) = condition {
-            let Some(idx) = schema_cols.iter().position(|c| &c.name == &cond.column) else {
+            let Some(idx) = schema_cols.iter().position(|c| c.name == cond.column) else {
                 return Err(format!("error: no such column '{}'", cond.column));
             };
 
@@ -341,7 +342,7 @@ fn serial_types_to_record_values(
                 RecordValue::Blob(blob)
             }
             RecordSerialType::String(size) => {
-                let bytes: Vec<u8> = (0..size).into_iter().map(|_| buf.get_u8()).collect();
+                let bytes: Vec<u8> = (0..size).map(|_| buf.get_u8()).collect();
                 RecordValue::String(String::from_utf8(bytes).expect("not utf8"))
             }
             _ => todo!("deal with internal"),

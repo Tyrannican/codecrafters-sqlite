@@ -11,6 +11,7 @@ use nom::{
     IResult, Parser,
 };
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SelectStatement {
     pub operation: Option<SelectOperation>,
@@ -19,25 +20,20 @@ pub struct SelectStatement {
     pub where_clause: Option<Condition>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum CreateStatement {
     Table(CreateTable),
-    Index(CreateIndex),
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct CreateTable {
     pub name: String,
     pub columns: Vec<ColumnDefinition>,
 }
 
-#[derive(Debug)]
-pub struct CreateIndex {
-    name: String,
-    table: String,
-    table_column: String,
-}
-
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ColumnDefinition {
     pub name: String,
@@ -45,6 +41,7 @@ pub struct ColumnDefinition {
     pub constraints: Vec<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Condition {
     pub column: String,
@@ -199,7 +196,7 @@ pub fn create_statement(input: &str) -> IResult<&str, CreateStatement> {
     create_table_statement(input)
 }
 
-fn create_index_statement(input: &str) -> IResult<&str, CreateStatement> {
+fn create_index_statement(_input: &str) -> IResult<&str, CreateStatement> {
     todo!("create index statement")
 }
 

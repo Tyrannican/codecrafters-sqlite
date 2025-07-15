@@ -20,7 +20,7 @@ fn main() -> Result<()> {
     match cli.command.as_str() {
         ".dbinfo" => db.dbinfo(),
         ".tables" => db.tables()?,
-        query => db.query(&query)?,
+        query => db.query(query)?,
     }
 
     Ok(())
