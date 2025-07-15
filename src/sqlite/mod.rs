@@ -263,21 +263,17 @@ impl SqliteReader {
 
     fn traverse_indexed_rows(&self, page: &BTreePage, id: u64, target_rows: &mut Vec<LeafCell>) {
         let cells = &page.cells;
-        // let last_idx = cells.len() - 1;
         match page.page_type() {
             BTreePageType::InteriorTable => {
-                let mut idx = 0;
-                while idx < cells.len() {
-                    let DatabaseCell::InteriorTable(table_cell) = &cells[idx] else {
-                        panic!("expected interior table cell - found {:#?}", &cells[idx]);
+                for cell in cells.iter() {
+                    let DatabaseCell::InteriorTable(table_cell) = cell else {
+                        panic!("expected interior table cell - found {cell:#?}");
                     };
 
                     if id <= table_cell.row_id {
                         let left_page = self.page(table_cell.left_child as usize);
                         return self.traverse_indexed_rows(&left_page, id, target_rows);
                     }
-
-                    idx += 1;
                 }
 
                 let Some(rp) = page.right_page_pointer() else {
