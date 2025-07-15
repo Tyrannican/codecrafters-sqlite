@@ -197,12 +197,10 @@ impl SqliteReader {
         let index_page = self.page(index.root_page as usize);
         let mut row_ids = Vec::new();
         let search_key = &statement.where_clause.as_ref().unwrap().value;
-        dbg!("searching index");
         self.search_index(&index_page, &search_key, &mut row_ids);
 
         let mut target_rows = Vec::new();
         let table_page = self.page(table.root_page as usize);
-        dbg!("traversing index rows");
         for id in row_ids {
             self.traverse_indexed_rows(&table_page, id, &mut target_rows);
         }

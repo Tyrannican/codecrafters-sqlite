@@ -126,7 +126,6 @@ impl InteriorIndexCell {
         buf.advance(consumed);
 
         let mut payload = &buf[..payload_size as usize];
-        // dbg!(buf.len(), payload.len(), payload_size, buf);
         let (record_header_size, consumed) = parse_varint(payload);
         payload.advance(consumed);
 
